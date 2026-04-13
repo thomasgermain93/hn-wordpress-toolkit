@@ -19,17 +19,17 @@ jobs:
       - name: Build ZIP
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          mkdir -p dist/hn-image-optimizer
+          mkdir -p dist/hn-wordpress-toolkit
           rsync -a \
             --exclude='.git' \
             --exclude='.github' \
             --exclude='dist' \
             --exclude='*.zip' \
-            . dist/hn-image-optimizer/
+            . dist/hn-wordpress-toolkit/
           cd dist
-          zip -r "../hn-image-optimizer-${VERSION}.zip" hn-image-optimizer/
+          zip -r "../hn-wordpress-toolkit-${VERSION}.zip" hn-wordpress-toolkit/
           cd ..
-          echo "ZIP=hn-image-optimizer-${VERSION}.zip" >> "$GITHUB_ENV"
+          echo "ZIP=hn-wordpress-toolkit-${VERSION}.zip" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

@@ -3,7 +3,7 @@
  * Plugin Name:  Hungry Nuggets WordPress Toolkit
  * Plugin URI:   https://github.com/thomasgermain93/hn-wordpress-toolkit
  * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), configurable via Settings > Media. GitHub-based auto-update.
- * Version:      1.0.3
+ * Version:      1.0.4
  * Requires PHP: 8.0
  * Author:       Hungry Nuggets
  * Author URI:   https://hungrynuggets.com
@@ -55,7 +55,7 @@
 
 defined('ABSPATH') || exit;
 
-define('HN_TOOLKIT_VERSION', '1.0.3');
+define('HN_TOOLKIT_VERSION', '1.0.4');
 define('HN_TOOLKIT_FILE',    __FILE__);
 
 require_once __DIR__ . '/includes/class-updater.php';
@@ -139,7 +139,7 @@ add_action('admin_init', function () {
     add_settings_field('hn_img_maxsize', 'Taille max (px)', function () {
         $val = hn_img_maxsize();
         echo '<input type="number" name="hn_img_maxsize" id="hn_img_maxsize" '
-           . 'value="' . esc_attr($val) . '" min="100" step="100" class="small-text"> px';
+           . 'value="' . esc_attr($val) . '" min="100" step="1" class="small-text"> px';
         echo '<p class="description">Largeur/hauteur maximale après conversion. Le ratio est conservé.</p>';
     }, 'media', 'hn_img_section');
 });

@@ -3,7 +3,7 @@
  * Plugin Name:  Hungry Nuggets WordPress Toolkit
  * Plugin URI:   https://github.com/thomasgermain93/hn-wordpress-toolkit
  * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), global comments disabler, config import/export. GitHub-based auto-update.
- * Version:      1.1.0
+ * Version:      1.1.1
  * Requires PHP: 8.0
  * Author:       Hungry Nuggets
  * Author URI:   https://hungrynuggets.com
@@ -81,7 +81,7 @@
 
 defined('ABSPATH') || exit;
 
-define('HN_TOOLKIT_VERSION', '1.1.0');
+define('HN_TOOLKIT_VERSION', '1.1.1');
 define('HN_TOOLKIT_FILE',    __FILE__);
 
 require_once __DIR__ . '/includes/class-updater.php';
@@ -349,14 +349,14 @@ add_action('admin_init', function () {
         'hn_comments_section',
         'Hungry Nuggets — Commentaires',
         '__return_false',
-        'options-discussion.php'
+        'discussion'
     );
 
     add_settings_field(
         'hn_disable_comments',
         'Désactiver les commentaires',
         'hn_render_disable_comments_field',
-        'options-discussion.php',
+        'discussion',
         'hn_comments_section'
     );
 });

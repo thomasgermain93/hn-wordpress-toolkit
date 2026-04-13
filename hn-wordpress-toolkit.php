@@ -2,8 +2,8 @@
 /**
  * Plugin Name:  Hungry Nuggets WordPress Toolkit
  * Plugin URI:   https://github.com/thomasgermain93/hn-wordpress-toolkit
- * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), configurable via Settings > Media. GitHub-based auto-update.
- * Version:      1.0.4
+ * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), global comments disabler. GitHub-based auto-update.
+ * Version:      1.1.0
  * Requires PHP: 8.0
  * Author:       Hungry Nuggets
  * Author URI:   https://hungrynuggets.com
@@ -50,12 +50,29 @@
  * Update flow:
  *  - pre_set_site_transient_update_plugins — injects GitHub release if newer
  *  - plugins_api                           — provides plugin info modal data
+ *
+ * ── Comments module ──────────────────────────────────────────────────────
+ * When hn_disable_comments is true, all comment & pingback functionality
+ * is suppressed site-wide:
+ *  - comments_open and pings_open filters return false (priority 20)
+ *  - wp_count_comments returns an empty object (zeroed counts)
+ *  - The "Comments" admin menu item is removed
+ *  - The "Comments" meta box is removed from all post types
+ *  - Native Discussion settings inputs are greyed out via inline JS
+ *
+ * WordPress options:
+ *  - hn_disable_comments (bool)  default: false
+ *
+ * Admin hooks:
+ *  - admin_init    — registers setting in the 'discussion' option group
+ *  - admin_menu    — removes Comments menu item (priority 999)
+ *  - add_meta_boxes — removes commentsdiv meta box from all post types
  * -----------------------------------------------------------------------------
  */
 
 defined('ABSPATH') || exit;
 
-define('HN_TOOLKIT_VERSION', '1.0.4');
+define('HN_TOOLKIT_VERSION', '1.1.0');
 define('HN_TOOLKIT_FILE',    __FILE__);
 
 require_once __DIR__ . '/includes/class-updater.php';
@@ -302,3 +319,129 @@ function hn_img_via_editor(string $source, string $dest, string $mime, int $qual
 
     return file_exists($saved['path'] ?? $dest);
 }
+
+// ─── Comments module — Global disable ─────────────────────────────────────
+
+/**
+ * Whether comments are globally disabled.
+ */
+function hn_comments_disabled(): bool {
+    return (bool) get_option('hn_disable_comments', false);
+}
+
+// ─── Settings API — Settings > Discussion ─────────────────────────────────
+add_action('admin_init', function () {
+
+    register_setting('discussion', 'hn_disable_comments', [
+        'sanitize_callback' => fn($v) => (bool) $v,
+    ]);
+
+    add_settings_section(
+        'hn_comments_section',
+        'Hungry Nuggets — Commentaires',
+        '__return_false',
+        'options-discussion.php'
+    );
+
+    add_settings_field(
+        'hn_disable_comments',
+        'Désactiver les commentaires',
+        'hn_render_disable_comments_field',
+        'options-discussion.php',
+        'hn_comments_section'
+    );
+});
+
+/**
+ * Render the toggle field for disabling comments.
+ */
+function hn_render_disable_comments_field(): void {
+    $disabled = hn_comments_disabled();
+    ?>
+    <label for="hn_disable_comments">
+        <input type="hidden" name="hn_disable_comments" value="0">
+        <input type="checkbox"
+               name="hn_disable_comments"
+               id="hn_disable_comments"
+               value="1"
+               <?php checked($disabled); ?>>
+        Désactiver les commentaires sur tout le site
+    </label>
+    <p class="description">
+        Quand activé, les commentaires et pings sont fermés partout, le menu Commentaires est masqué
+        et les réglages natifs ci-dessous sont grisés.
+    </p>
+    <?php
+}
+
+// ─── Inline JS: grey out native Discussion fields when toggle is ON ───────
+add_action('admin_footer-options-discussion.php', function () {
+    ?>
+    <script>
+    (function() {
+        var toggle = document.getElementById('hn_disable_comments');
+        if (!toggle) return;
+
+        function setNativeFieldsState(disabled) {
+            var form = toggle.closest('form');
+            if (!form) return;
+            var fields = form.querySelectorAll('input, select, textarea');
+            fields.forEach(function(el) {
+                if (el.name === 'hn_disable_comments' || el.type === 'hidden' || el.type === 'submit') return;
+                el.disabled = disabled;
+            });
+        }
+
+        setNativeFieldsState(toggle.checked);
+        toggle.addEventListener('change', function() {
+            setNativeFieldsState(this.checked);
+        });
+    })();
+    </script>
+    <?php
+});
+
+// ─── Front-end & API: close comments and pings ───────────────────────────
+add_filter('comments_open', function (bool $open): bool {
+    return hn_comments_disabled() ? false : $open;
+}, 20);
+
+add_filter('pings_open', function (bool $open): bool {
+    return hn_comments_disabled() ? false : $open;
+}, 20);
+
+// ─── Admin: zero out comment counts ──────────────────────────────────────
+add_filter('wp_count_comments', function ($counts) {
+    if (! hn_comments_disabled()) {
+        return $counts;
+    }
+    return (object) [
+        'approved'       => 0,
+        'moderated'      => 0,
+        'awaiting_moderation' => 0,
+        'spam'           => 0,
+        'trash'          => 0,
+        'post-trashed'   => 0,
+        'total_comments' => 0,
+        'all'            => 0,
+    ];
+}, 20);
+
+// ─── Admin: remove Comments menu item ────────────────────────────────────
+add_action('admin_menu', function () {
+    if (hn_comments_disabled()) {
+        remove_menu_page('edit-comments.php');
+    }
+}, 999);
+
+// ─── Admin: remove Comments meta box from all post types ─────────────────
+add_action('add_meta_boxes', function () {
+    if (! hn_comments_disabled()) {
+        return;
+    }
+    $post_types = get_post_types(['public' => true]);
+    foreach ($post_types as $pt) {
+        remove_meta_box('commentsdiv', $pt, 'normal');
+        remove_meta_box('commentstatusdiv', $pt, 'normal');
+    }
+}, 20);

@@ -2,8 +2,8 @@
 /**
  * Plugin Name:  Hungry Nuggets WordPress Toolkit
  * Plugin URI:   https://github.com/thomasgermain93/hn-wordpress-toolkit
- * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), global comments disabler, config import/export. GitHub-based auto-update.
- * Version:      1.1.3
+ * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), global comments disabler, author pages disabler, config import/export. GitHub-based auto-update.
+ * Version:      1.1.4
  * Requires PHP: 8.0
  * Author:       Hungry Nuggets
  * Author URI:   https://hungrynuggets.com
@@ -42,7 +42,8 @@
  *  - hn_img_format       (string)  'webp' | 'avif'   default: 'webp'
  *  - hn_img_quality      (int)     1–100              default: 90
  *  - hn_img_maxsize      (int)     pixels             default: 2000
- *  - hn_disable_comments (bool)    true | false       default: false
+ *  - hn_disable_comments     (bool)    true | false       default: false
+ *  - hn_disable_author_pages (bool)    true | false       default: false
  *
  * Filters used:
  *  - wp_handle_upload              priority 5  — conversion entry point
@@ -76,12 +77,25 @@
  *  - admin_init    — registers setting in the 'discussion' option group
  *  - admin_menu    — removes Comments menu item (priority 999)
  *  - add_meta_boxes — removes commentsdiv meta box from all post types
+ *
+ * ── Author pages module ──────────────────────────────────────────────────
+ * When hn_disable_author_pages is true, author archive pages are redirected
+ * to the homepage with a 301 status code.
+ *
+ * WordPress options:
+ *  - hn_disable_author_pages (bool)  default: false
+ *
+ * Admin hooks:
+ *  - admin_init    — registers setting in the 'general' option group
+ *
+ * Front-end hooks:
+ *  - template_redirect — 301 redirect author archives to home_url('/')
  * -----------------------------------------------------------------------------
  */
 
 defined('ABSPATH') || exit;
 
-define('HN_TOOLKIT_VERSION', '1.1.3');
+define('HN_TOOLKIT_VERSION', '1.1.4');
 define('HN_TOOLKIT_FILE',    __FILE__);
 
 require_once __DIR__ . '/includes/class-updater.php';
@@ -358,7 +372,11 @@ add_action('admin_init', function () {
 });
 
 // ─── Inline CSS: toggle switch styles ─────────────────────────────────────
-add_action('admin_head-options-discussion.php', function () {
+
+/**
+ * Output inline CSS for the HN toggle switch component.
+ */
+function hn_render_toggle_css(): void {
     ?>
     <style>
     .hn-toggle-wrap { display:flex; align-items:center; gap:10px; cursor:pointer; }
@@ -380,7 +398,10 @@ add_action('admin_head-options-discussion.php', function () {
     .hn-toggle-input:focus + .hn-toggle-track { box-shadow:0 0 0 2px #2271b1; }
     </style>
     <?php
-});
+}
+
+add_action('admin_head-options-discussion.php', 'hn_render_toggle_css');
+add_action('admin_head-options-general.php', 'hn_render_toggle_css');
 
 /**
  * Render the toggle field for disabling comments.
@@ -486,6 +507,57 @@ add_action('add_meta_boxes', function () {
     }
 }, 20);
 
+// ─── Author pages module — Disable author archives ──────────────────────
+
+/**
+ * Whether author archive pages are disabled.
+ */
+function hn_author_pages_disabled(): bool {
+    return (bool) get_option('hn_disable_author_pages', false);
+}
+
+// ─── Settings API — Settings > General ───────────────────────────────────
+add_action('admin_init', function () {
+
+    register_setting('general', 'hn_disable_author_pages', [
+        'sanitize_callback' => fn($v) => (bool) $v,
+    ]);
+
+    add_settings_section('hn_general_section', '', '__return_false', 'general');
+
+    add_settings_field(
+        'hn_disable_author_pages',
+        'Pages d\'auteurs',
+        'hn_render_disable_author_pages_field',
+        'general',
+        'hn_general_section'
+    );
+});
+
+/**
+ * Render the toggle field for disabling author pages.
+ */
+function hn_render_disable_author_pages_field(): void {
+    $val = hn_author_pages_disabled();
+    ?>
+    <label class="hn-toggle-wrap" for="hn_disable_author_pages">
+        <input type="hidden" name="hn_disable_author_pages" value="0">
+        <input type="checkbox" class="hn-toggle-input" name="hn_disable_author_pages" id="hn_disable_author_pages" value="1" <?php checked($val); ?>>
+        <span class="hn-toggle-track"></span>
+        <span>Désactiver les pages d'auteurs</span>
+    </label>
+    <p class="description">Redirige les archives auteur vers l'accueil (301).</p>
+    <?php
+}
+
+// ─── Front-end: redirect author archives to home ────────────────────────
+add_action('template_redirect', function () {
+    if (hn_author_pages_disabled() && is_author()) {
+        wp_redirect(home_url('/'), 301);
+        exit;
+    }
+});
+
 // ─── Config Import/Export — Settings > HN Toolkit ─────────────────────────
 
 /**
@@ -499,7 +571,8 @@ function hn_config_sanitizers(): array {
         'hn_img_format'       => fn($v) => in_array($v, ['webp', 'avif'], true) ? $v : 'webp',
         'hn_img_quality'      => fn($v) => max(1, min(100, (int) $v)),
         'hn_img_maxsize'      => fn($v) => max(100, (int) $v),
-        'hn_disable_comments' => fn($v) => (bool) $v,
+        'hn_disable_comments'     => fn($v) => (bool) $v,
+        'hn_disable_author_pages' => fn($v) => (bool) $v,
     ];
 }
 

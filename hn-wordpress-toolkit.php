@@ -3,7 +3,7 @@
  * Plugin Name:  Hungry Nuggets WordPress Toolkit
  * Plugin URI:   https://github.com/thomasgermain93/hn-wordpress-toolkit
  * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), global comments disabler, config import/export. GitHub-based auto-update.
- * Version:      1.1.1
+ * Version:      1.1.2
  * Requires PHP: 8.0
  * Author:       Hungry Nuggets
  * Author URI:   https://hungrynuggets.com
@@ -81,7 +81,7 @@
 
 defined('ABSPATH') || exit;
 
-define('HN_TOOLKIT_VERSION', '1.1.1');
+define('HN_TOOLKIT_VERSION', '1.1.2');
 define('HN_TOOLKIT_FILE',    __FILE__);
 
 require_once __DIR__ . '/includes/class-updater.php';
@@ -345,20 +345,41 @@ add_action('admin_init', function () {
         'sanitize_callback' => fn($v) => (bool) $v,
     ]);
 
-    add_settings_section(
-        'hn_comments_section',
-        'Hungry Nuggets — Commentaires',
-        '__return_false',
-        'discussion'
-    );
+    // Empty title = no <h2> rendered by WP, we render our own header in the field.
+    add_settings_section('hn_comments_section', '', '__return_false', 'discussion');
 
     add_settings_field(
         'hn_disable_comments',
-        'Désactiver les commentaires',
+        'Commentaires',
         'hn_render_disable_comments_field',
         'discussion',
         'hn_comments_section'
     );
+});
+
+// ─── Inline CSS: toggle switch styles ─────────────────────────────────────
+add_action('admin_head-options-discussion.php', function () {
+    ?>
+    <style>
+    .hn-toggle-wrap { display:flex; align-items:center; gap:10px; cursor:pointer; }
+    .hn-toggle-input { position:absolute; opacity:0; width:0; height:0; }
+    .hn-toggle-track {
+        position:relative; display:inline-block;
+        width:44px; height:24px;
+        background:#ccc; border-radius:24px; transition:.25s;
+        flex-shrink:0;
+    }
+    .hn-toggle-input:checked + .hn-toggle-track { background:#2271b1; }
+    .hn-toggle-track::after {
+        content:''; position:absolute;
+        width:18px; height:18px;
+        left:3px; bottom:3px;
+        background:#fff; border-radius:50%; transition:.25s;
+    }
+    .hn-toggle-input:checked + .hn-toggle-track::after { left:23px; }
+    .hn-toggle-input:focus + .hn-toggle-track { box-shadow:0 0 0 2px #2271b1; }
+    </style>
+    <?php
 });
 
 /**
@@ -367,14 +388,16 @@ add_action('admin_init', function () {
 function hn_render_disable_comments_field(): void {
     $disabled = hn_comments_disabled();
     ?>
-    <label for="hn_disable_comments">
+    <label class="hn-toggle-wrap" for="hn_disable_comments">
         <input type="hidden" name="hn_disable_comments" value="0">
         <input type="checkbox"
+               class="hn-toggle-input"
                name="hn_disable_comments"
                id="hn_disable_comments"
                value="1"
                <?php checked($disabled); ?>>
-        Désactiver les commentaires sur tout le site
+        <span class="hn-toggle-track"></span>
+        <span>Désactiver les commentaires sur tout le site</span>
     </label>
     <p class="description">
         Quand activé, les commentaires et pings sont fermés partout, le menu Commentaires est masqué
@@ -383,29 +406,37 @@ function hn_render_disable_comments_field(): void {
     <?php
 }
 
-// ─── Inline JS: grey out native Discussion fields when toggle is ON ───────
+// ─── JS: move section to top + grey out native fields ─────────────────────
 add_action('admin_footer-options-discussion.php', function () {
     ?>
     <script>
-    (function() {
+    document.addEventListener('DOMContentLoaded', function () {
         var toggle = document.getElementById('hn_disable_comments');
         if (!toggle) return;
 
-        function setNativeFieldsState(disabled) {
-            var form = toggle.closest('form');
+        // Move our section (table) to the very top of the form.
+        var table  = toggle.closest('table.form-table');
+        var form   = toggle.closest('form');
+        if (table && form) {
+            var firstTable = form.querySelector('table.form-table');
+            if (firstTable && firstTable !== table) {
+                form.insertBefore(table, firstTable);
+            }
+        }
+
+        // Disable / enable native WP fields based on toggle state.
+        function setNativeFields(isDisabled) {
             if (!form) return;
-            var fields = form.querySelectorAll('input, select, textarea');
-            fields.forEach(function(el) {
+            form.querySelectorAll('input, select, textarea').forEach(function (el) {
                 if (el.name === 'hn_disable_comments' || el.type === 'hidden' || el.type === 'submit') return;
-                el.disabled = disabled;
+                el.disabled = isDisabled;
+                el.style.opacity = isDisabled ? '0.4' : '';
             });
         }
 
-        setNativeFieldsState(toggle.checked);
-        toggle.addEventListener('change', function() {
-            setNativeFieldsState(this.checked);
-        });
-    })();
+        setNativeFields(toggle.checked);
+        toggle.addEventListener('change', function () { setNativeFields(this.checked); });
+    });
     </script>
     <?php
 });

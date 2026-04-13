@@ -2,7 +2,7 @@
 /**
  * Plugin Name:  Hungry Nuggets WordPress Toolkit
  * Plugin URI:   https://github.com/thomasgermain93/hn-wordpress-toolkit
- * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), global comments disabler. GitHub-based auto-update.
+ * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), global comments disabler, config import/export. GitHub-based auto-update.
  * Version:      1.1.0
  * Requires PHP: 8.0
  * Author:       Hungry Nuggets
@@ -14,6 +14,8 @@
  * -----------------------------------------------------------------------------
  * This plugin intercepts WordPress image uploads and converts them to WebP or
  * AVIF, replaces the original file, and updates the attachment metadata accordingly.
+ * It also provides a configuration import/export module to replicate settings
+ * across WordPress installations.
  *
  * Key behaviours:
  *  - Conversion happens in the `wp_handle_upload` filter at priority 5, before
@@ -30,13 +32,17 @@
  *    responsive sizing (e.g. Breakdance, Elementor, etc.).
  *  - Quality and max-dimension settings are stored in wp_options and exposed
  *    in Settings > Media.
+ *  - Config import/export is available via Settings > HN Toolkit. Export
+ *    generates a JSON file; import validates and applies options using the
+ *    same sanitize callbacks as the settings API.
  *  - Automatic updates are provided via HN_Toolkit_Updater, which
  *    checks the GitHub Releases API every 12 hours.
  *
  * WordPress options:
- *  - hn_img_format  (string)  'webp' | 'avif'   default: 'webp'
- *  - hn_img_quality (int)     1–100              default: 90
- *  - hn_img_maxsize (int)     pixels             default: 2000
+ *  - hn_img_format       (string)  'webp' | 'avif'   default: 'webp'
+ *  - hn_img_quality      (int)     1–100              default: 90
+ *  - hn_img_maxsize      (int)     pixels             default: 2000
+ *  - hn_disable_comments (bool)    true | false       default: false
  *
  * Filters used:
  *  - wp_handle_upload              priority 5  — conversion entry point
@@ -46,6 +52,9 @@
  *
  * Admin hooks:
  *  - admin_init    — registers settings in the 'media' option group
+ *  - admin_menu    — adds Settings > HN Toolkit page
+ *  - admin_post_hn_export_config — handles config export
+ *  - admin_post_hn_import_config — handles config import
  *
  * Update flow:
  *  - pre_set_site_transient_update_plugins — injects GitHub release if newer
@@ -445,3 +454,180 @@ add_action('add_meta_boxes', function () {
         remove_meta_box('commentstatusdiv', $pt, 'normal');
     }
 }, 20);
+
+// ─── Config Import/Export — Settings > HN Toolkit ─────────────────────────
+
+/**
+ * Sanitize callbacks for all recognised hn_* options.
+ * Used both by the Settings API and the import handler.
+ *
+ * @return array<string, callable>
+ */
+function hn_config_sanitizers(): array {
+    return [
+        'hn_img_format'       => fn($v) => in_array($v, ['webp', 'avif'], true) ? $v : 'webp',
+        'hn_img_quality'      => fn($v) => max(1, min(100, (int) $v)),
+        'hn_img_maxsize'      => fn($v) => max(100, (int) $v),
+        'hn_disable_comments' => fn($v) => (bool) $v,
+    ];
+}
+
+// ─── Admin menu ───────────────────────────────────────────────────────────
+add_action('admin_menu', function () {
+    add_options_page(
+        'HN Toolkit',
+        'HN Toolkit',
+        'manage_options',
+        'hn-toolkit-config',
+        'hn_config_page_render'
+    );
+});
+
+/**
+ * Render the Settings > HN Toolkit page.
+ */
+function hn_config_page_render(): void {
+    ?>
+    <div class="wrap">
+        <h1>HN Toolkit — Configuration</h1>
+
+        <?php
+        // Retrieve settings errors stored in transient after redirect.
+        $transient_errors = get_transient('settings_errors');
+        if (is_array($transient_errors) && $transient_errors) {
+            delete_transient('settings_errors');
+            foreach ($transient_errors as $err) {
+                add_settings_error($err['setting'], $err['code'], $err['message'], $err['type']);
+            }
+        }
+        settings_errors('hn_toolkit_config');
+        ?>
+
+        <div class="card">
+            <h2>Exporter la configuration</h2>
+            <p>Télécharge un fichier JSON contenant tous les réglages du plugin.</p>
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                <input type="hidden" name="action" value="hn_export_config">
+                <?php wp_nonce_field('hn_export_config', '_hn_nonce'); ?>
+                <?php submit_button('Télécharger la configuration', 'primary', 'submit', false); ?>
+            </form>
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+            <h2>Importer une configuration</h2>
+            <p>Charge un fichier JSON exporté depuis un autre site pour appliquer les mêmes réglages.</p>
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data">
+                <input type="hidden" name="action" value="hn_import_config">
+                <?php wp_nonce_field('hn_import_config', '_hn_nonce'); ?>
+                <p>
+                    <input type="file" name="hn_config_file" accept=".json">
+                </p>
+                <?php submit_button('Importer', 'secondary', 'submit', false); ?>
+            </form>
+        </div>
+    </div>
+    <?php
+}
+
+// ─── Export handler ───────────────────────────────────────────────────────
+add_action('admin_post_hn_export_config', function () {
+
+    if (! current_user_can('manage_options')) {
+        wp_die('Accès refusé.', 403);
+    }
+
+    if (! wp_verify_nonce($_POST['_hn_nonce'] ?? '', 'hn_export_config')) {
+        wp_die('Nonce invalide.', 403);
+    }
+
+    $sanitizers = hn_config_sanitizers();
+    $options    = [];
+
+    foreach ($sanitizers as $key => $sanitize) {
+        $options[$key] = $sanitize(get_option($key, null));
+    }
+
+    $data = [
+        'plugin'      => 'hn-wordpress-toolkit',
+        'version'     => HN_TOOLKIT_VERSION,
+        'exported_at' => gmdate('Y-m-d\TH:i:s+00:00'),
+        'options'     => $options,
+    ];
+
+    $filename = 'hn-config-' . gmdate('Y-m-d') . '.json';
+
+    header('Content-Type: application/json; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Cache-Control: no-cache, no-store, must-revalidate');
+
+    echo wp_json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    exit;
+});
+
+// ─── Import handler ───────────────────────────────────────────────────────
+add_action('admin_post_hn_import_config', function () {
+
+    if (! current_user_can('manage_options')) {
+        wp_die('Accès refusé.', 403);
+    }
+
+    if (! wp_verify_nonce($_POST['_hn_nonce'] ?? '', 'hn_import_config')) {
+        wp_die('Nonce invalide.', 403);
+    }
+
+    $redirect = admin_url('options-general.php?page=hn-toolkit-config');
+
+    // Validate uploaded file.
+    if (empty($_FILES['hn_config_file']['tmp_name']) || $_FILES['hn_config_file']['error'] !== UPLOAD_ERR_OK) {
+        add_settings_error('hn_toolkit_config', 'no_file', 'Aucun fichier sélectionné.', 'error');
+        set_transient('settings_errors', get_settings_errors('hn_toolkit_config'), 30);
+        wp_safe_redirect($redirect);
+        exit;
+    }
+
+    $raw  = file_get_contents($_FILES['hn_config_file']['tmp_name']);
+    $data = json_decode($raw, true);
+
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        add_settings_error('hn_toolkit_config', 'invalid_json', 'Le fichier n\'est pas un JSON valide.', 'error');
+        set_transient('settings_errors', get_settings_errors('hn_toolkit_config'), 30);
+        wp_safe_redirect($redirect);
+        exit;
+    }
+
+    if (($data['plugin'] ?? '') !== 'hn-wordpress-toolkit') {
+        add_settings_error('hn_toolkit_config', 'wrong_plugin', 'Ce fichier n\'appartient pas au plugin HN Toolkit.', 'error');
+        set_transient('settings_errors', get_settings_errors('hn_toolkit_config'), 30);
+        wp_safe_redirect($redirect);
+        exit;
+    }
+
+    if (! isset($data['options']) || ! is_array($data['options'])) {
+        add_settings_error('hn_toolkit_config', 'no_options', 'Le fichier ne contient pas de clé "options" valide.', 'error');
+        set_transient('settings_errors', get_settings_errors('hn_toolkit_config'), 30);
+        wp_safe_redirect($redirect);
+        exit;
+    }
+
+    $sanitizers = hn_config_sanitizers();
+    $imported   = 0;
+
+    foreach ($data['options'] as $key => $value) {
+        if (! isset($sanitizers[$key])) {
+            continue; // Option non reconnue — ignorer.
+        }
+        $clean = $sanitizers[$key]($value);
+        update_option($key, $clean);
+        $imported++;
+    }
+
+    add_settings_error(
+        'hn_toolkit_config',
+        'import_success',
+        sprintf('%d option(s) importée(s) avec succès.', $imported),
+        'success'
+    );
+    set_transient('settings_errors', get_settings_errors('hn_toolkit_config'), 30);
+    wp_safe_redirect($redirect);
+    exit;
+});

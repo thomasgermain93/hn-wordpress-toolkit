@@ -2,7 +2,7 @@
 /**
  * Plugin Name:  Hungry Nuggets WordPress Toolkit
  * Plugin URI:   https://github.com/thomasgermain93/hn-wordpress-toolkit
- * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), global comments disabler, author pages disabler, config import/export. GitHub-based auto-update.
+ * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), comments/author pages/media pages disablers, config import/export. GitHub-based auto-update.
  * Version:      1.1.4
  * Requires PHP: 8.0
  * Author:       Hungry Nuggets
@@ -39,11 +39,12 @@
  *    checks the GitHub Releases API every 12 hours.
  *
  * WordPress options:
- *  - hn_img_format       (string)  'webp' | 'avif'   default: 'webp'
- *  - hn_img_quality      (int)     1–100              default: 90
- *  - hn_img_maxsize      (int)     pixels             default: 2000
+ *  - hn_img_format           (string)  'webp' | 'avif'   default: 'webp'
+ *  - hn_img_quality          (int)     1–100              default: 90
+ *  - hn_img_maxsize          (int)     pixels             default: 2000
  *  - hn_disable_comments     (bool)    true | false       default: false
  *  - hn_disable_author_pages (bool)    true | false       default: false
+ *  - hn_disable_media_pages  (bool)    true | false       default: false
  *
  * Filters used:
  *  - wp_handle_upload              priority 5  — conversion entry point
@@ -81,15 +82,14 @@
  * ── Author pages module ──────────────────────────────────────────────────
  * When hn_disable_author_pages is true, author archive pages are redirected
  * to the homepage with a 301 status code.
- *
- * WordPress options:
- *  - hn_disable_author_pages (bool)  default: false
- *
- * Admin hooks:
  *  - admin_init    — registers setting in the 'general' option group
- *
- * Front-end hooks:
  *  - template_redirect — 301 redirect author archives to home_url('/')
+ *
+ * ── Media pages module ───────────────────────────────────────────────────
+ * When hn_disable_media_pages is true, attachment pages are redirected
+ * (301) to the direct file URL (prevents thin content indexing).
+ *  - admin_init — registers setting in the 'media' option group
+ *  - template_redirect — redirects attachment pages to file URL (301)
  * -----------------------------------------------------------------------------
  */
 
@@ -133,6 +133,13 @@ function hn_img_quality(): int {
  */
 function hn_img_maxsize(): int {
     return (int) get_option('hn_img_maxsize', 2000);
+}
+
+/**
+ * Whether media (attachment) pages are disabled.
+ */
+function hn_media_pages_disabled(): bool {
+    return (bool) get_option('hn_disable_media_pages', false);
 }
 
 // ─── Settings API — Settings > Media ──────────────────────────────────────
@@ -182,11 +189,51 @@ add_action('admin_init', function () {
            . 'value="' . esc_attr($val) . '" min="100" step="1" class="small-text"> px';
         echo '<p class="description">Largeur/hauteur maximale après conversion. Le ratio est conservé.</p>';
     }, 'media', 'hn_img_section');
+
+    // ── Media pages (attachments) ────────────────────────────────────────
+    register_setting('media', 'hn_disable_media_pages', [
+        'sanitize_callback' => fn($v) => (bool) $v,
+    ]);
+
+    add_settings_section('hn_media_section', '', '__return_false', 'media');
+
+    add_settings_field(
+        'hn_disable_media_pages',
+        'Pages de médias',
+        'hn_render_disable_media_pages_field',
+        'media',
+        'hn_media_section'
+    );
 });
 
 // ─── Quality sync ──────────────────────────────────────────────────────────
 add_filter('jpeg_quality',          fn() => hn_img_quality());
 add_filter('wp_editor_set_quality', fn() => hn_img_quality());
+
+/**
+ * Render the toggle field for disabling media pages.
+ */
+function hn_render_disable_media_pages_field(): void {
+    $val = hn_media_pages_disabled();
+    ?>
+    <label class="hn-toggle-wrap" for="hn_disable_media_pages">
+        <input type="hidden" name="hn_disable_media_pages" value="0">
+        <input type="checkbox" class="hn-toggle-input" name="hn_disable_media_pages" id="hn_disable_media_pages" value="1" <?php checked($val); ?>>
+        <span class="hn-toggle-track"></span>
+        <span>Désactiver les pages de médias</span>
+    </label>
+    <p class="description">Redirige les pages d'attachments vers l'URL directe du fichier (301).</p>
+    <?php
+}
+
+// ─── Front-end: redirect attachment pages ─────────────────────────────────
+add_action('template_redirect', function () {
+    if (hn_media_pages_disabled() && is_attachment()) {
+        $url = wp_get_attachment_url(get_the_ID());
+        wp_redirect($url ?: home_url('/'), 301);
+        exit;
+    }
+});
 
 // ─── Upload conversion ─────────────────────────────────────────────────────
 /**
@@ -401,7 +448,8 @@ function hn_render_toggle_css(): void {
 }
 
 add_action('admin_head-options-discussion.php', 'hn_render_toggle_css');
-add_action('admin_head-options-general.php', 'hn_render_toggle_css');
+add_action('admin_head-options-general.php',    'hn_render_toggle_css');
+add_action('admin_head-options-media.php',      'hn_render_toggle_css');
 
 /**
  * Render the toggle field for disabling comments.
@@ -573,6 +621,7 @@ function hn_config_sanitizers(): array {
         'hn_img_maxsize'      => fn($v) => max(100, (int) $v),
         'hn_disable_comments'     => fn($v) => (bool) $v,
         'hn_disable_author_pages' => fn($v) => (bool) $v,
+        'hn_disable_media_pages'  => fn($v) => (bool) $v,
     ];
 }
 

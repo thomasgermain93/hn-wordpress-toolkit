@@ -3,7 +3,7 @@
  * Plugin Name:  Hungry Nuggets WordPress Toolkit
  * Plugin URI:   https://github.com/thomasgermain93/hn-wordpress-toolkit
  * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), global comments disabler, config import/export. GitHub-based auto-update.
- * Version:      1.1.2
+ * Version:      1.1.3
  * Requires PHP: 8.0
  * Author:       Hungry Nuggets
  * Author URI:   https://hungrynuggets.com
@@ -81,7 +81,7 @@
 
 defined('ABSPATH') || exit;
 
-define('HN_TOOLKIT_VERSION', '1.1.2');
+define('HN_TOOLKIT_VERSION', '1.1.3');
 define('HN_TOOLKIT_FILE',    __FILE__);
 
 require_once __DIR__ . '/includes/class-updater.php';
@@ -518,44 +518,56 @@ add_action('admin_menu', function () {
  * Render the Settings > HN Toolkit page.
  */
 function hn_config_page_render(): void {
+    // Retrieve messages stored in transient after POST redirect.
+    $transient_errors = get_transient('settings_errors');
+    if (is_array($transient_errors) && $transient_errors) {
+        delete_transient('settings_errors');
+        foreach ($transient_errors as $err) {
+            add_settings_error($err['setting'], $err['code'], $err['message'], $err['type']);
+        }
+    }
     ?>
     <div class="wrap">
-        <h1>HN Toolkit — Configuration</h1>
+        <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
 
-        <?php
-        // Retrieve settings errors stored in transient after redirect.
-        $transient_errors = get_transient('settings_errors');
-        if (is_array($transient_errors) && $transient_errors) {
-            delete_transient('settings_errors');
-            foreach ($transient_errors as $err) {
-                add_settings_error($err['setting'], $err['code'], $err['message'], $err['type']);
-            }
-        }
-        settings_errors('hn_toolkit_config');
-        ?>
+        <?php settings_errors('hn_toolkit_config'); ?>
 
-        <div class="card">
-            <h2>Exporter la configuration</h2>
-            <p>Télécharge un fichier JSON contenant tous les réglages du plugin.</p>
-            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-                <input type="hidden" name="action" value="hn_export_config">
-                <?php wp_nonce_field('hn_export_config', '_hn_nonce'); ?>
-                <?php submit_button('Télécharger la configuration', 'primary', 'submit', false); ?>
-            </form>
-        </div>
+        <h2><?php esc_html_e('Exporter la configuration', 'hn-toolkit'); ?></h2>
+        <p><?php esc_html_e('Télécharge un fichier JSON contenant tous les réglages du plugin.', 'hn-toolkit'); ?></p>
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+            <input type="hidden" name="action" value="hn_export_config">
+            <?php wp_nonce_field('hn_export_config', '_hn_nonce'); ?>
+            <p class="submit">
+                <button type="submit" class="button button-primary">
+                    <?php esc_html_e('Télécharger la configuration', 'hn-toolkit'); ?>
+                </button>
+            </p>
+        </form>
 
-        <div class="card" style="margin-top:20px;">
-            <h2>Importer une configuration</h2>
-            <p>Charge un fichier JSON exporté depuis un autre site pour appliquer les mêmes réglages.</p>
-            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data">
-                <input type="hidden" name="action" value="hn_import_config">
-                <?php wp_nonce_field('hn_import_config', '_hn_nonce'); ?>
-                <p>
-                    <input type="file" name="hn_config_file" accept=".json">
-                </p>
-                <?php submit_button('Importer', 'secondary', 'submit', false); ?>
-            </form>
-        </div>
+        <hr>
+
+        <h2><?php esc_html_e('Importer une configuration', 'hn-toolkit'); ?></h2>
+        <p><?php esc_html_e('Charge un fichier JSON exporté depuis un autre site pour appliquer les mêmes réglages.', 'hn-toolkit'); ?></p>
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data">
+            <input type="hidden" name="action" value="hn_import_config">
+            <?php wp_nonce_field('hn_import_config', '_hn_nonce'); ?>
+            <table class="form-table" role="presentation">
+                <tr>
+                    <th scope="row">
+                        <label for="hn_config_file"><?php esc_html_e('Fichier de configuration', 'hn-toolkit'); ?></label>
+                    </th>
+                    <td>
+                        <input type="file" name="hn_config_file" id="hn_config_file" accept=".json">
+                        <p class="description"><?php esc_html_e('Fichier .json généré par l\'export ci-dessus.', 'hn-toolkit'); ?></p>
+                    </td>
+                </tr>
+            </table>
+            <p class="submit">
+                <button type="submit" class="button button-secondary">
+                    <?php esc_html_e('Importer', 'hn-toolkit'); ?>
+                </button>
+            </p>
+        </form>
     </div>
     <?php
 }

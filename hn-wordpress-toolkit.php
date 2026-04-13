@@ -1,8 +1,8 @@
 <?php
 /**
- * Plugin Name:  Hungry Nuggets Image Optimizer
- * Plugin URI:   https://github.com/thomasgermain93/hn-image-optimizer
- * Description:  Converts images to WebP or AVIF on upload. Quality, max size and format are configurable from Settings > Media. Thumbnail-only intermediate sizes. GitHub-based auto-update.
+ * Plugin Name:  Hungry Nuggets WordPress Toolkit
+ * Plugin URI:   https://github.com/thomasgermain93/hn-wordpress-toolkit
+ * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), configurable via Settings > Media. GitHub-based auto-update.
  * Version:      1.0.0
  * Requires PHP: 8.0
  * Author:       Hungry Nuggets
@@ -30,7 +30,7 @@
  *    responsive sizing (e.g. Breakdance, Elementor, etc.).
  *  - Quality and max-dimension settings are stored in wp_options and exposed
  *    in Settings > Media.
- *  - Automatic updates are provided via HN_Image_Optimizer_Updater, which
+ *  - Automatic updates are provided via HN_Toolkit_Updater, which
  *    checks the GitHub Releases API every 12 hours.
  *
  * WordPress options:
@@ -55,18 +55,18 @@
 
 defined('ABSPATH') || exit;
 
-define('HN_IMG_OPT_VERSION', '1.0.0');
-define('HN_IMG_OPT_FILE',    __FILE__);
+define('HN_TOOLKIT_VERSION', '1.0.0');
+define('HN_TOOLKIT_FILE',    __FILE__);
 
 require_once __DIR__ . '/includes/class-updater.php';
 
 // ─── Auto-update via GitHub ────────────────────────────────────────────────
 add_action('init', function () {
     if (is_admin()) {
-        (new HN_Image_Optimizer_Updater(
-            HN_IMG_OPT_FILE,
-            HN_IMG_OPT_VERSION,
-            'thomasgermain93/hn-image-optimizer'
+        (new HN_Toolkit_Updater(
+            HN_TOOLKIT_FILE,
+            HN_TOOLKIT_VERSION,
+            'thomasgermain93/hn-wordpress-toolkit'
         ))->init();
     }
 });

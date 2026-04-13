@@ -1,6 +1,6 @@
 <?php
 /**
- * GitHub-based automatic updater for Hungry Nuggets Image Optimizer.
+ * GitHub-based automatic updater for Hungry Nuggets WordPress Toolkit.
  *
  * Hooks into the WordPress plugin update system to check the latest GitHub
  * release. When a new tag is published (e.g. v1.2.0) the plugin appears in
@@ -12,15 +12,15 @@
 defined('ABSPATH') || exit;
 
 /**
- * Class HN_Image_Optimizer_Updater
+ * Class HN_Toolkit_Updater
  *
  * Compares the installed version against the latest GitHub release tag and
  * injects the result into WordPress's `update_plugins` transient.
  *
  * Usage:
- *   (new HN_Image_Optimizer_Updater(__FILE__, HN_IMG_OPT_VERSION, 'thomasgermain93/hn-image-optimizer'))->init();
+ *   (new HN_Toolkit_Updater(__FILE__, HN_TOOLKIT_VERSION, 'thomasgermain93/hn-wordpress-toolkit'))->init();
  */
-class HN_Image_Optimizer_Updater {
+class HN_Toolkit_Updater {
 
     private string $plugin_file;
     private string $plugin_slug;
@@ -28,7 +28,7 @@ class HN_Image_Optimizer_Updater {
     private string $github_repo;
 
     /** Transient key used to cache the GitHub API response for 12 hours. */
-    private const TRANSIENT_KEY = 'hn_img_opt_github_release';
+    private const TRANSIENT_KEY = 'hn_toolkit_github_release';
 
     public function __construct(string $plugin_file, string $version, string $github_repo) {
         $this->plugin_file = $plugin_file;
@@ -110,7 +110,7 @@ class HN_Image_Optimizer_Updater {
         }
 
         return (object) [
-            'name'          => 'Hungry Nuggets Image Optimizer',
+            'name'          => 'Hungry Nuggets WordPress Toolkit',
             'slug'          => dirname($this->plugin_slug),
             'version'       => ltrim($release->tag_name, 'v'),
             'author'        => '<a href="https://hungrynuggets.com">Hungry Nuggets</a>',

@@ -1,4 +1,4 @@
-# Hungry Nuggets Image Optimizer
+# Hungry Nuggets WordPress Toolkit
 
 A lightweight WordPress plugin that converts images to **WebP** (or AVIF) on upload, with configurable quality, max size, and format — all from **Settings > Media**.
 
@@ -32,18 +32,18 @@ Built and maintained by [Hungry Nuggets](https://hungrynuggets.com) for internal
 
 ```bash
 # Install latest release
-wp plugin install https://github.com/thomasgermain93/hn-image-optimizer/releases/latest/download/hn-image-optimizer-<VERSION>.zip --activate --allow-root
+wp plugin install https://github.com/thomasgermain93/hn-wordpress-toolkit/releases/latest/download/hn-wordpress-toolkit-<VERSION>.zip --activate --allow-root
 
 # Or: force-update to latest
-wp plugin install https://github.com/thomasgermain93/hn-image-optimizer/releases/latest/download/hn-image-optimizer-<VERSION>.zip --force --activate --allow-root
+wp plugin install https://github.com/thomasgermain93/hn-wordpress-toolkit/releases/latest/download/hn-wordpress-toolkit-<VERSION>.zip --force --activate --allow-root
 ```
 
 > Replace `<VERSION>` with the actual version number (e.g. `1.0.0`).  
-> To find the latest ZIP URL: `gh release view --repo thomasgermain93/hn-image-optimizer --json assets -q '.assets[].browserDownloadUrl'`
+> To find the latest ZIP URL: `gh release view --repo thomasgermain93/hn-wordpress-toolkit --json assets -q '.assets[].browserDownloadUrl'`
 
 ### Via WordPress admin
 
-1. Download the latest `.zip` from [Releases](https://github.com/thomasgermain93/hn-image-optimizer/releases).
+1. Download the latest `.zip` from [Releases](https://github.com/thomasgermain93/hn-wordpress-toolkit/releases).
 2. Go to **Plugins > Add New > Upload Plugin**.
 3. Upload the ZIP and activate.
 
@@ -63,18 +63,18 @@ Go to **Settings > Media**. The plugin adds an **"Optimisation des images"** sec
 
 ## Auto-updates
 
-The plugin checks `https://api.github.com/repos/thomasgermain93/hn-image-optimizer/releases/latest` every 12 hours and injects the result into the WordPress update transient.
+The plugin checks `https://api.github.com/repos/thomasgermain93/hn-wordpress-toolkit/releases/latest` every 12 hours and injects the result into the WordPress update transient.
 
 When a new version is available:
 - It appears in **Dashboard > Updates** like any plugin.
-- It can be updated via WP-CLI: `wp plugin update hn-image-optimizer --allow-root`
+- It can be updated via WP-CLI: `wp plugin update hn-wordpress-toolkit --allow-root`
 
 ---
 
 ## Deploying a new version
 
 ```bash
-# Bump version in hn-image-optimizer.php (HN_IMG_OPT_VERSION + Plugin header)
+# Bump version in hn-wordpress-toolkit.php (HN_IMG_OPT_VERSION + Plugin header)
 git commit -am "chore: bump version to 1.x.x"
 git tag v1.x.x
 git push origin main --tags
@@ -132,7 +132,7 @@ wp_handle_upload (priority 5)
 
 `HN_Image_Optimizer_Updater` (in `includes/class-updater.php`):
 - Hooks into `pre_set_site_transient_update_plugins`
-- Calls `https://api.github.com/repos/thomasgermain93/hn-image-optimizer/releases/latest`
+- Calls `https://api.github.com/repos/thomasgermain93/hn-wordpress-toolkit/releases/latest`
 - Caches response in `hn_img_opt_github_release` transient for 12 hours (30 min on error)
 - Injects update into WordPress transient if `tag_name` version > installed version
 - ZIP URL: first `.zip` asset in the release, fallback to `zipball_url`

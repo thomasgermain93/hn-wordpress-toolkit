@@ -2,8 +2,8 @@
 /**
  * Plugin Name:  Hungry Nuggets WordPress Toolkit
  * Plugin URI:   https://github.com/thomasgermain93/hn-wordpress-toolkit
- * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), comments/author pages/media pages disablers, config import/export. GitHub-based auto-update.
- * Version:      1.1.6
+ * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), comments/posts/author pages/media pages disablers, config import/export. GitHub-based auto-update.
+ * Version:      1.1.7
  * Requires PHP: 8.0
  * Author:       Hungry Nuggets
  * Author URI:   https://hungrynuggets.com
@@ -95,7 +95,7 @@
 
 defined('ABSPATH') || exit;
 
-define('HN_TOOLKIT_VERSION', '1.1.6');
+define('HN_TOOLKIT_VERSION', '1.1.7');
 define('HN_TOOLKIT_FILE',    __FILE__);
 
 require_once __DIR__ . '/includes/class-updater.php';
@@ -1030,4 +1030,115 @@ add_action('admin_footer-options-media.php', function () {
     });
     </script>
     <?php
+});
+
+// ─── Posts (blog) module — Global disable ─────────────────────────────────────
+
+/**
+ * Whether the blog (posts) functionality is globally disabled.
+ */
+function hn_posts_disabled(): bool {
+    return (bool) get_option('hn_disable_posts', false);
+}
+
+// ─── Settings API — Settings > Reading ───────────────────────────────────────
+add_action('admin_init', function () {
+
+    register_setting('reading', 'hn_disable_posts', [
+        'sanitize_callback' => fn($v) => (bool) $v,
+    ]);
+
+    add_settings_section('hn_posts_section', '', '__return_false', 'reading');
+
+    add_settings_field(
+        'hn_disable_posts',
+        'Articles (blog)',
+        'hn_render_disable_posts_field',
+        'reading',
+        'hn_posts_section'
+    );
+});
+
+/**
+ * Render the toggle field for disabling posts.
+ */
+function hn_render_disable_posts_field(): void {
+    $val = hn_posts_disabled();
+    ?>
+    <label class="hn-toggle-wrap" for="hn_disable_posts">
+        <input type="hidden" name="hn_disable_posts" value="0">
+        <input type="checkbox"
+               class="hn-toggle-input"
+               name="hn_disable_posts"
+               id="hn_disable_posts"
+               value="1"
+               <?php checked($val); ?>>
+        <span class="hn-toggle-track"></span>
+        <span>Désactiver les articles sur tout le site</span>
+    </label>
+    <p class="description">
+        Quand activé, le menu Articles est masqué, les archives et articles sont
+        redirigés vers l'accueil (301), et les réglages natifs ci-dessous sont grisés.
+    </p>
+    <?php
+}
+
+// ─── JS: move section to top + grey out native reading fields ─────────────────
+add_action('admin_footer-options-reading.php', function () {
+    ?>
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var toggle = document.getElementById('hn_disable_posts');
+        if (!toggle) return;
+
+        var table = toggle.closest('table.form-table');
+        var form  = toggle.closest('form');
+        if (table && form) {
+            var firstTable = form.querySelector('table.form-table');
+            if (firstTable && firstTable !== table) {
+                form.insertBefore(table, firstTable);
+            }
+        }
+
+        function setNativeFields(isDisabled) {
+            if (!form) return;
+            form.querySelectorAll('input, select, textarea').forEach(function (el) {
+                if (el.name === 'hn_disable_posts' || el.type === 'hidden' || el.type === 'submit') return;
+                el.disabled    = isDisabled;
+                el.style.opacity = isDisabled ? '0.4' : '';
+            });
+        }
+
+        setNativeFields(toggle.checked);
+        toggle.addEventListener('change', function () { setNativeFields(this.checked); });
+    });
+    </script>
+    <?php
+});
+
+add_action('admin_head-options-reading.php', 'hn_render_toggle_css');
+
+// ─── Admin: remove Posts menu item ────────────────────────────────────────────
+add_action('admin_menu', function () {
+    if (hn_posts_disabled()) {
+        remove_menu_page('edit.php'); // Posts
+    }
+}, 999);
+
+// ─── Admin: remove "New Post" from the admin bar ──────────────────────────────
+add_action('admin_bar_menu', function (WP_Admin_Bar $bar) {
+    if (hn_posts_disabled()) {
+        $bar->remove_node('new-post');
+    }
+}, 999);
+
+// ─── Front-end: redirect blog archive and single posts ───────────────────────
+add_action('template_redirect', function () {
+    if (! hn_posts_disabled()) {
+        return;
+    }
+    if (is_home() || is_singular('post') || is_category() || is_tag() || is_date() || is_author()) {
+        wp_redirect(home_url('/'), 301);
+        exit;
+    }
 });

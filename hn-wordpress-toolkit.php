@@ -3,7 +3,7 @@
  * Plugin Name:  Hungry Nuggets WordPress Toolkit
  * Plugin URI:   https://github.com/thomasgermain93/hn-wordpress-toolkit
  * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), comments/author pages/media pages disablers, config import/export. GitHub-based auto-update.
- * Version:      1.1.4
+ * Version:      1.1.5
  * Requires PHP: 8.0
  * Author:       Hungry Nuggets
  * Author URI:   https://hungrynuggets.com
@@ -95,7 +95,7 @@
 
 defined('ABSPATH') || exit;
 
-define('HN_TOOLKIT_VERSION', '1.1.4');
+define('HN_TOOLKIT_VERSION', '1.1.5');
 define('HN_TOOLKIT_FILE',    __FILE__);
 
 require_once __DIR__ . '/includes/class-updater.php';
@@ -795,4 +795,244 @@ add_action('admin_post_hn_import_config', function () {
     set_transient('settings_errors', get_settings_errors('hn_toolkit_config'), 30);
     wp_safe_redirect($redirect);
     exit;
+});
+
+// ─── Bulk Regenerate — AJAX handler ───────────────────────────────────────────
+//
+// Converts existing JPEG/PNG/GIF attachments to the currently configured format.
+// Processes images in small batches so the request never times out.
+// The caller is expected to poll repeatedly, incrementing the offset, until
+// 'done' is true in the response.
+//
+// POST params:
+//   nonce  — wp_create_nonce('hn_bulk_regen')
+//   offset — int, starting position in the attachment list (0-based)
+//
+// Response (JSON):
+//   { processed: int, offset: int, done: bool, errors: string[] }
+
+add_action('wp_ajax_hn_bulk_regen', function () {
+
+    check_ajax_referer('hn_bulk_regen', 'nonce');
+
+    if (! current_user_can('manage_options')) {
+        wp_send_json_error('Permission refusée.', 403);
+    }
+
+    $offset     = max(0, (int) ($_POST['offset'] ?? 0));
+    $batch_size = 3;
+
+    $ids = get_posts([
+        'post_type'      => 'attachment',
+        'post_mime_type' => ['image/jpeg', 'image/png', 'image/gif'],
+        'post_status'    => 'inherit',
+        'posts_per_page' => $batch_size,
+        'offset'         => $offset,
+        'fields'         => 'ids',
+        'orderby'        => 'ID',
+        'order'          => 'ASC',
+    ]);
+
+    $processed = 0;
+    $errors    = [];
+
+    foreach ($ids as $id) {
+
+        $file_path = get_attached_file($id);
+        if (! $file_path || ! file_exists($file_path)) {
+            $errors[] = "ID $id : fichier introuvable.";
+            $processed++;
+            continue;
+        }
+
+        $ext       = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
+        $real_type = match ($ext) {
+            'png'         => 'image/png',
+            'jpg', 'jpeg' => 'image/jpeg',
+            'gif'         => 'image/gif',
+            default       => '',
+        };
+
+        if (! $real_type) {
+            $processed++;
+            continue;
+        }
+
+        $format    = hn_img_format();
+        $quality   = hn_img_quality();
+        $maxsize   = hn_img_maxsize();
+        $mime      = 'image/' . $format;
+        $dir       = pathinfo($file_path, PATHINFO_DIRNAME);
+        $name      = pathinfo($file_path, PATHINFO_FILENAME);
+        $new_path  = $dir . '/' . $name . '.' . $format;
+        $converted = false;
+
+        if ($format === 'webp') {
+            if ($real_type === 'image/png' && function_exists('imagecreatefrompng') && function_exists('imagewebp')) {
+                $src = imagecreatefrompng($file_path);
+                if ($src) {
+                    $src = hn_img_resize_gd($src, $maxsize);
+                    imagealphablending($src, false);
+                    imagesavealpha($src, true);
+                    if (imagewebp($src, $new_path, $quality)) {
+                        $converted = true;
+                    }
+                    imagedestroy($src);
+                }
+            } else {
+                $converted = hn_img_via_editor($file_path, $new_path, $mime, $quality, $maxsize);
+            }
+        } elseif ($format === 'avif' && class_exists('Imagick')) {
+            try {
+                $img = new Imagick($file_path);
+                if ($img->getImageWidth() > $maxsize || $img->getImageHeight() > $maxsize) {
+                    $img->resizeImage($maxsize, $maxsize, Imagick::FILTER_LANCZOS, 1, true);
+                }
+                $img->setImageFormat('avif');
+                $img->setImageCompressionQuality($quality);
+                $img->stripImage();
+                $img->writeImage($new_path);
+                $img->destroy();
+                $converted = file_exists($new_path);
+            } catch (Exception $e) {
+                $errors[] = sprintf('ID %d : %s', $id, $e->getMessage());
+            }
+        } else {
+            // Format AVIF demandé mais Imagick non disponible.
+            $errors[] = "ID $id : AVIF impossible (Imagick/libavif non disponible).";
+        }
+
+        if ($converted && file_exists($new_path)) {
+            // Remove original only if it differs from the output path.
+            if ($new_path !== $file_path) {
+                @unlink($file_path);
+            }
+            // Update WP metadata so the media library reflects the new file.
+            update_attached_file($id, _wp_relative_upload_path($new_path));
+            wp_update_post(['ID' => $id, 'post_mime_type' => $mime]);
+            $meta = wp_generate_attachment_metadata($id, $new_path);
+            wp_update_attachment_metadata($id, $meta);
+        }
+
+        $processed++;
+    }
+
+    wp_send_json_success([
+        'processed' => $processed,
+        'offset'    => $offset + $processed,
+        'done'      => count($ids) < $batch_size,
+        'errors'    => $errors,
+    ]);
+});
+
+// ─── Bulk Regenerate — Admin UI injected into Settings > Media ────────────────
+
+add_action('admin_footer-options-media.php', function () {
+
+    // Count of attachments that can be converted (original formats only).
+    $query = new WP_Query([
+        'post_type'      => 'attachment',
+        'post_mime_type' => ['image/jpeg', 'image/png', 'image/gif'],
+        'post_status'    => 'inherit',
+        'posts_per_page' => 1,
+        'fields'         => 'ids',
+    ]);
+    $total = (int) $query->found_posts;
+
+    $nonce   = wp_create_nonce('hn_bulk_regen');
+    $ajax    = admin_url('admin-ajax.php');
+    $format  = esc_html(strtoupper(hn_img_format()));
+    ?>
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var maxsizeField = document.getElementById('hn_img_maxsize');
+        if (! maxsizeField) return;
+        var tr = maxsizeField.closest('tr');
+        if (! tr) return;
+
+        var total   = <?php echo (int) $total; ?>;
+        var nonce   = <?php echo wp_json_encode($nonce); ?>;
+        var ajaxUrl = <?php echo wp_json_encode($ajax); ?>;
+        var format  = <?php echo wp_json_encode($format); ?>;
+
+        var newTr = document.createElement('tr');
+        newTr.innerHTML =
+            '<th scope="row">Régénération en masse</th>' +
+            '<td id="hn-bulk-regen-cell">' +
+                '<p class="description" style="margin-top:0">' +
+                    total + ' image(s) JPEG/PNG/GIF dans la bibliothèque — seront converties en ' + format + '.' +
+                '</p>' +
+                '<button type="button" id="hn-bulk-regen-btn" class="button button-secondary">' +
+                    'Lancer la régénération' +
+                '</button>' +
+                '<span id="hn-bulk-regen-progress" style="margin-left:12px;display:none;vertical-align:middle;">' +
+                    '<progress id="hn-bulk-regen-bar" value="0" max="' + total + '" style="width:180px;vertical-align:middle;"></progress>' +
+                    '&nbsp;<span id="hn-bulk-regen-count">0&nbsp;/&nbsp;' + total + '</span>' +
+                '</span>' +
+                '<p id="hn-bulk-regen-done" style="display:none;color:#2e7d32;font-weight:600;margin-top:8px;">✓ Régénération terminée.</p>' +
+                '<ul id="hn-bulk-regen-errors" style="color:#b32d2e;margin-top:8px;list-style:disc;padding-left:1.2em;"></ul>' +
+            '</td>';
+        tr.after(newTr);
+
+        var btn       = document.getElementById('hn-bulk-regen-btn');
+        var progress  = document.getElementById('hn-bulk-regen-progress');
+        var bar       = document.getElementById('hn-bulk-regen-bar');
+        var countEl   = document.getElementById('hn-bulk-regen-count');
+        var doneEl    = document.getElementById('hn-bulk-regen-done');
+        var errList   = document.getElementById('hn-bulk-regen-errors');
+        var offset    = 0;
+        var processed = 0;
+
+        btn.addEventListener('click', function () {
+            if (btn.disabled) return;
+            btn.disabled      = true;
+            progress.style.display = 'inline';
+            doneEl.style.display   = 'none';
+            errList.innerHTML      = '';
+            offset    = 0;
+            processed = 0;
+            bar.value = 0;
+            runBatch();
+        });
+
+        function runBatch() {
+            var fd = new FormData();
+            fd.append('action', 'hn_bulk_regen');
+            fd.append('nonce',  nonce);
+            fd.append('offset', offset);
+
+            fetch(ajaxUrl, { method: 'POST', credentials: 'same-origin', body: fd })
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    if (! res.success) {
+                        errList.innerHTML += '<li>Erreur serveur : ' + (res.data || 'inconnue') + '</li>';
+                        btn.disabled = false;
+                        return;
+                    }
+                    var d  = res.data;
+                    processed += d.processed;
+                    offset     = d.offset;
+                    bar.value  = processed;
+                    countEl.textContent = processed + '\u00a0/\u00a0' + total;
+
+                    (d.errors || []).forEach(function (e) {
+                        errList.innerHTML += '<li>' + e + '</li>';
+                    });
+
+                    if (d.done) {
+                        doneEl.style.display = 'block';
+                        btn.disabled         = false;
+                        btn.textContent      = 'Relancer la régénération';
+                    } else {
+                        runBatch();
+                    }
+                })
+                .catch(function (err) {
+                    errList.innerHTML += '<li>Erreur réseau : ' + err + '</li>';
+                    btn.disabled = false;
+                });
+        }
+    });
+    </script>
+    <?php
 });

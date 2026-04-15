@@ -3,7 +3,7 @@
  * Plugin Name:  Hungry Nuggets WordPress Toolkit
  * Plugin URI:   https://github.com/thomasgermain93/hn-wordpress-toolkit
  * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), comments/posts/author pages/media pages disablers, config import/export. GitHub-based auto-update.
- * Version:      1.1.8
+ * Version:      1.1.9
  * Requires PHP: 8.0
  * Author:       Hungry Nuggets
  * Author URI:   https://hungrynuggets.com
@@ -95,7 +95,7 @@
 
 defined('ABSPATH') || exit;
 
-define('HN_TOOLKIT_VERSION', '1.1.8');
+define('HN_TOOLKIT_VERSION', '1.1.9');
 define('HN_TOOLKIT_FILE',    __FILE__);
 
 require_once __DIR__ . '/includes/class-updater.php';
@@ -275,6 +275,11 @@ add_filter('wp_handle_upload', function (array $upload): array {
             // Use GD for PNG → WebP to preserve alpha channel.
             $src = imagecreatefrompng($file_path);
             if ($src) {
+                // Palette (indexed-color) PNGs must be converted to truecolor first —
+                // imagewebp() silently writes a 0-byte file on palette images.
+                if (! imageistruecolor($src)) {
+                    imagepalettetotruecolor($src);
+                }
                 $src = hn_img_resize_gd($src, $maxsize);
                 imagealphablending($src, false);
                 imagesavealpha($src, true);
@@ -874,6 +879,10 @@ add_action('wp_ajax_hn_bulk_regen', function () {
             if ($real_type === 'image/png' && function_exists('imagecreatefrompng') && function_exists('imagewebp')) {
                 $src = imagecreatefrompng($file_path);
                 if ($src) {
+                    // Palette (indexed-color) PNGs must be converted to truecolor first.
+                    if (! imageistruecolor($src)) {
+                        imagepalettetotruecolor($src);
+                    }
                     $src = hn_img_resize_gd($src, $maxsize);
                     imagealphablending($src, false);
                     imagesavealpha($src, true);

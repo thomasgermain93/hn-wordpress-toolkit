@@ -3,7 +3,7 @@
  * Plugin Name:  Hungry Nuggets WordPress Toolkit
  * Plugin URI:   https://github.com/thomasgermain93/hn-wordpress-toolkit
  * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), comments/posts/author pages/media pages disablers, config import/export. GitHub-based auto-update.
- * Version:      1.1.7
+ * Version:      1.1.8
  * Requires PHP: 8.0
  * Author:       Hungry Nuggets
  * Author URI:   https://hungrynuggets.com
@@ -95,7 +95,7 @@
 
 defined('ABSPATH') || exit;
 
-define('HN_TOOLKIT_VERSION', '1.1.7');
+define('HN_TOOLKIT_VERSION', '1.1.8');
 define('HN_TOOLKIT_FILE',    __FILE__);
 
 require_once __DIR__ . '/includes/class-updater.php';
@@ -305,11 +305,14 @@ add_filter('wp_handle_upload', function (array $upload): array {
         }
     }
 
-    if ($converted && file_exists($new_path)) {
+    if ($converted && file_exists($new_path) && filesize($new_path) > 0) {
         @unlink($file_path);
         $upload['file'] = $new_path;
         $upload['url']  = str_replace(basename($upload['url']), basename($new_path), $upload['url']);
         $upload['type'] = $mime;
+    } elseif (file_exists($new_path) && $new_path !== $file_path) {
+        // Conversion produced a 0-byte output file — remove it and keep the original.
+        @unlink($new_path);
     }
 
     return $upload;
@@ -902,7 +905,7 @@ add_action('wp_ajax_hn_bulk_regen', function () {
             $errors[] = "ID $id : AVIF impossible (Imagick/libavif non disponible).";
         }
 
-        if ($converted && file_exists($new_path)) {
+        if ($converted && file_exists($new_path) && filesize($new_path) > 0) {
             // Remove original only if it differs from the output path.
             if ($new_path !== $file_path) {
                 @unlink($file_path);
@@ -912,6 +915,10 @@ add_action('wp_ajax_hn_bulk_regen', function () {
             wp_update_post(['ID' => $id, 'post_mime_type' => $mime]);
             $meta = wp_generate_attachment_metadata($id, $new_path);
             wp_update_attachment_metadata($id, $meta);
+        } elseif (file_exists($new_path) && $new_path !== $file_path) {
+            // Conversion produced a 0-byte output file — remove it and keep the original.
+            @unlink($new_path);
+            $errors[] = "ID $id : conversion échouée (fichier vide) — original conservé.";
         }
 
         $processed++;

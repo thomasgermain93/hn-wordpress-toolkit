@@ -3,7 +3,7 @@
  * Plugin Name:  Hungry Nuggets WordPress Toolkit
  * Plugin URI:   https://github.com/thomasgermain93/hn-wordpress-toolkit
  * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), comments/author pages/media pages disablers, config import/export. GitHub-based auto-update.
- * Version:      1.1.5
+ * Version:      1.1.6
  * Requires PHP: 8.0
  * Author:       Hungry Nuggets
  * Author URI:   https://hungrynuggets.com
@@ -95,7 +95,7 @@
 
 defined('ABSPATH') || exit;
 
-define('HN_TOOLKIT_VERSION', '1.1.5');
+define('HN_TOOLKIT_VERSION', '1.1.6');
 define('HN_TOOLKIT_FILE',    __FILE__);
 
 require_once __DIR__ . '/includes/class-updater.php';
@@ -801,15 +801,15 @@ add_action('admin_post_hn_import_config', function () {
 //
 // Converts existing JPEG/PNG/GIF attachments to the currently configured format.
 // Processes images in small batches so the request never times out.
-// The caller is expected to poll repeatedly, incrementing the offset, until
-// 'done' is true in the response.
+// No offset needed: each successful conversion changes the attachment MIME type
+// to WebP/AVIF, so converted images automatically drop out of the query.
+// The caller polls until 'done' is true (fewer than batch_size results).
 //
 // POST params:
-//   nonce  — wp_create_nonce('hn_bulk_regen')
-//   offset — int, starting position in the attachment list (0-based)
+//   nonce — wp_create_nonce('hn_bulk_regen')
 //
 // Response (JSON):
-//   { processed: int, offset: int, done: bool, errors: string[] }
+//   { processed: int, done: bool, errors: string[] }
 
 add_action('wp_ajax_hn_bulk_regen', function () {
 
@@ -819,15 +819,15 @@ add_action('wp_ajax_hn_bulk_regen', function () {
         wp_send_json_error('Permission refusée.', 403);
     }
 
-    $offset     = max(0, (int) ($_POST['offset'] ?? 0));
     $batch_size = 3;
 
+    // Always query from offset 0: converted images leave the result set
+    // automatically because their post_mime_type becomes image/webp or image/avif.
     $ids = get_posts([
         'post_type'      => 'attachment',
         'post_mime_type' => ['image/jpeg', 'image/png', 'image/gif'],
         'post_status'    => 'inherit',
         'posts_per_page' => $batch_size,
-        'offset'         => $offset,
         'fields'         => 'ids',
         'orderby'        => 'ID',
         'order'          => 'ASC',
@@ -919,7 +919,6 @@ add_action('wp_ajax_hn_bulk_regen', function () {
 
     wp_send_json_success([
         'processed' => $processed,
-        'offset'    => $offset + $processed,
         'done'      => count($ids) < $batch_size,
         'errors'    => $errors,
     ]);
@@ -980,7 +979,6 @@ add_action('admin_footer-options-media.php', function () {
         var countEl   = document.getElementById('hn-bulk-regen-count');
         var doneEl    = document.getElementById('hn-bulk-regen-done');
         var errList   = document.getElementById('hn-bulk-regen-errors');
-        var offset    = 0;
         var processed = 0;
 
         btn.addEventListener('click', function () {
@@ -989,7 +987,6 @@ add_action('admin_footer-options-media.php', function () {
             progress.style.display = 'inline';
             doneEl.style.display   = 'none';
             errList.innerHTML      = '';
-            offset    = 0;
             processed = 0;
             bar.value = 0;
             runBatch();
@@ -999,7 +996,6 @@ add_action('admin_footer-options-media.php', function () {
             var fd = new FormData();
             fd.append('action', 'hn_bulk_regen');
             fd.append('nonce',  nonce);
-            fd.append('offset', offset);
 
             fetch(ajaxUrl, { method: 'POST', credentials: 'same-origin', body: fd })
                 .then(function (r) { return r.json(); })
@@ -1011,7 +1007,6 @@ add_action('admin_footer-options-media.php', function () {
                     }
                     var d  = res.data;
                     processed += d.processed;
-                    offset     = d.offset;
                     bar.value  = processed;
                     countEl.textContent = processed + '\u00a0/\u00a0' + total;
 

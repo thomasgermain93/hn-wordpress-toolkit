@@ -3,8 +3,8 @@
  * Plugin Name:  Hungry Nuggets WordPress Toolkit
  * Plugin URI:   https://github.com/thomasgermain93/hn-wordpress-toolkit
  * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), comments/posts/author pages/media pages disablers, config import/export. GitHub-based auto-update.
- * Version:      1.2.0
- * Requires PHP: 8.0
+ * Version:      1.2.1
+ * Requires PHP: 7.3
  * Author:       Hungry Nuggets
  * Author URI:   https://hungrynuggets.com
  * License:      MIT
@@ -146,13 +146,13 @@ function hn_media_pages_disabled(): bool {
 add_action('admin_init', function () {
 
     register_setting('media', 'hn_img_format', [
-        'sanitize_callback' => fn($v) => in_array($v, ['webp', 'avif'], true) ? $v : 'webp',
+        'sanitize_callback' => function ($v) { return in_array($v, ['webp', 'avif'], true) ? $v : 'webp'; },
     ]);
     register_setting('media', 'hn_img_quality', [
-        'sanitize_callback' => fn($v) => max(1, min(100, (int) $v)),
+        'sanitize_callback' => function ($v) { return max(1, min(100, (int) $v)); },
     ]);
     register_setting('media', 'hn_img_maxsize', [
-        'sanitize_callback' => fn($v) => max(100, (int) $v),
+        'sanitize_callback' => function ($v) { return max(100, (int) $v); },
     ]);
 
     add_settings_section('hn_img_section', 'Optimisation des images', '__return_false', 'media');
@@ -192,7 +192,7 @@ add_action('admin_init', function () {
 
     // ── Media pages (attachments) ────────────────────────────────────────
     register_setting('media', 'hn_disable_media_pages', [
-        'sanitize_callback' => fn($v) => (bool) $v,
+        'sanitize_callback' => function ($v) { return (bool) $v; },
     ]);
 
     add_settings_section('hn_media_section', '', '__return_false', 'media');
@@ -207,8 +207,8 @@ add_action('admin_init', function () {
 });
 
 // ─── Quality sync ──────────────────────────────────────────────────────────
-add_filter('jpeg_quality',          fn() => hn_img_quality());
-add_filter('wp_editor_set_quality', fn() => hn_img_quality());
+add_filter('jpeg_quality',          function () { return hn_img_quality(); });
+add_filter('wp_editor_set_quality', function () { return hn_img_quality(); });
 
 /**
  * Render the toggle field for disabling media pages.
@@ -411,7 +411,7 @@ function hn_comments_disabled(): bool {
 add_action('admin_init', function () {
 
     register_setting('discussion', 'hn_disable_comments', [
-        'sanitize_callback' => fn($v) => (bool) $v,
+        'sanitize_callback' => function ($v) { return (bool) $v; },
     ]);
 
     // Empty title = no <h2> rendered by WP, we render our own header in the field.
@@ -576,7 +576,7 @@ function hn_author_pages_disabled(): bool {
 add_action('admin_init', function () {
 
     register_setting('general', 'hn_disable_author_pages', [
-        'sanitize_callback' => fn($v) => (bool) $v,
+        'sanitize_callback' => function ($v) { return (bool) $v; },
     ]);
 
     add_settings_section('hn_general_section', '', '__return_false', 'general');
@@ -624,12 +624,12 @@ add_action('template_redirect', function () {
  */
 function hn_config_sanitizers(): array {
     return [
-        'hn_img_format'       => fn($v) => in_array($v, ['webp', 'avif'], true) ? $v : 'webp',
-        'hn_img_quality'      => fn($v) => max(1, min(100, (int) $v)),
-        'hn_img_maxsize'      => fn($v) => max(100, (int) $v),
-        'hn_disable_comments'     => fn($v) => (bool) $v,
-        'hn_disable_author_pages' => fn($v) => (bool) $v,
-        'hn_disable_media_pages'  => fn($v) => (bool) $v,
+        'hn_img_format'           => function ($v) { return in_array($v, ['webp', 'avif'], true) ? $v : 'webp'; },
+        'hn_img_quality'          => function ($v) { return max(1, min(100, (int) $v)); },
+        'hn_img_maxsize'          => function ($v) { return max(100, (int) $v); },
+        'hn_disable_comments'     => function ($v) { return (bool) $v; },
+        'hn_disable_author_pages' => function ($v) { return (bool) $v; },
+        'hn_disable_media_pages'  => function ($v) { return (bool) $v; },
     ];
 }
 
@@ -1061,7 +1061,7 @@ function hn_posts_disabled(): bool {
 add_action('admin_init', function () {
 
     register_setting('reading', 'hn_disable_posts', [
-        'sanitize_callback' => fn($v) => (bool) $v,
+        'sanitize_callback' => function ($v) { return (bool) $v; },
     ]);
 
     add_settings_section('hn_posts_section', '', '__return_false', 'reading');

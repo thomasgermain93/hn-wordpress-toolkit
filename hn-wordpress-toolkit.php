@@ -3,7 +3,7 @@
  * Plugin Name:  Hungry Nuggets WordPress Toolkit
  * Plugin URI:   https://github.com/thomasgermain93/hn-wordpress-toolkit
  * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), comments/posts/author pages/media pages disablers, config import/export. GitHub-based auto-update.
- * Version:      1.1.9
+ * Version:      1.2.0
  * Requires PHP: 8.0
  * Author:       Hungry Nuggets
  * Author URI:   https://hungrynuggets.com
@@ -1116,12 +1116,24 @@ add_action('admin_footer-options-reading.php', function () {
             }
         }
 
+        // Fields to grey: only those directly related to the blog/posts feature.
+        // blog_public (search engine visibility), show_on_front and page_on_front (static homepage) stay active.
+        var postsFields = ['page_for_posts', 'posts_per_page', 'posts_per_rss', 'rss_use_excerpt'];
+
         function setNativeFields(isDisabled) {
             if (!form) return;
             form.querySelectorAll('input, select, textarea').forEach(function (el) {
                 if (el.name === 'hn_disable_posts' || el.type === 'hidden' || el.type === 'submit') return;
+                if (postsFields.indexOf(el.name) === -1) return; // skip non-posts fields
                 el.disabled    = isDisabled;
                 el.style.opacity = isDisabled ? '0.4' : '';
+            });
+            // Also grey the row labels for readability
+            postsFields.forEach(function (name) {
+                var el = form.querySelector('[name="' + name + '"]');
+                if (!el) return;
+                var row = el.closest('tr');
+                if (row) row.style.opacity = isDisabled ? '0.4' : '';
             });
         }
 
@@ -1153,7 +1165,8 @@ add_action('template_redirect', function () {
     if (! hn_posts_disabled()) {
         return;
     }
-    if (is_home() || is_singular('post') || is_category() || is_tag() || is_date() || is_author()) {
+    // is_home() && is_front_page() = root URL with show_on_front='posts' → don't redirect or it loops.
+    if ((is_home() && ! is_front_page()) || is_singular('post') || is_category() || is_tag() || is_date() || is_author()) {
         wp_redirect(home_url('/'), 301);
         exit;
     }

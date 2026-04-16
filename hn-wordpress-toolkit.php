@@ -3,7 +3,7 @@
  * Plugin Name:  Hungry Nuggets WordPress Toolkit
  * Plugin URI:   https://github.com/thomasgermain93/hn-wordpress-toolkit
  * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), comments/posts/author pages/media pages disablers, config import/export. GitHub-based auto-update.
- * Version:      1.2.1
+ * Version:      1.2.2
  * Requires PHP: 7.3
  * Author:       Hungry Nuggets
  * Author URI:   https://hungrynuggets.com
@@ -95,7 +95,7 @@
 
 defined('ABSPATH') || exit;
 
-define('HN_TOOLKIT_VERSION', '1.2.1');
+define('HN_TOOLKIT_VERSION', '1.2.2');
 define('HN_TOOLKIT_FILE',    __FILE__);
 
 require_once __DIR__ . '/includes/class-updater.php';
@@ -1117,24 +1117,38 @@ add_action('admin_footer-options-reading.php', function () {
         }
 
         // Fields to grey: only those directly related to the blog/posts feature.
-        // blog_public (search engine visibility), show_on_front and page_on_front (static homepage) stay active.
-        var postsFields = ['page_for_posts', 'posts_per_page', 'posts_per_rss', 'rss_use_excerpt'];
+        // show_on_front="page" and page_on_front (static homepage) stay fully active.
+        // page_for_posts and show_on_front="posts" are greyed individually (not the whole row).
+        var purePostsFields = ['posts_per_page', 'posts_per_rss', 'rss_use_excerpt'];
 
         function setNativeFields(isDisabled) {
             if (!form) return;
-            form.querySelectorAll('input, select, textarea').forEach(function (el) {
-                if (el.name === 'hn_disable_posts' || el.type === 'hidden' || el.type === 'submit') return;
-                if (postsFields.indexOf(el.name) === -1) return; // skip non-posts fields
-                el.disabled    = isDisabled;
-                el.style.opacity = isDisabled ? '0.4' : '';
-            });
-            // Also grey the row labels for readability
-            postsFields.forEach(function (name) {
+
+            // Grey entire rows for fields that are 100% posts-related.
+            purePostsFields.forEach(function (name) {
                 var el = form.querySelector('[name="' + name + '"]');
                 if (!el) return;
+                el.disabled = isDisabled;
                 var row = el.closest('tr');
                 if (row) row.style.opacity = isDisabled ? '0.4' : '';
             });
+
+            // page_for_posts: grey only its own <label> — it shares its <tr> with page_on_front.
+            var pageForPosts = form.querySelector('[name="page_for_posts"]');
+            if (pageForPosts) {
+                pageForPosts.disabled = isDisabled;
+                var lbl = pageForPosts.closest('label');
+                if (lbl) lbl.style.opacity = isDisabled ? '0.4' : '';
+                else pageForPosts.style.opacity = isDisabled ? '0.4' : '';
+            }
+
+            // show_on_front="posts" radio: grey its label only; leave show_on_front="page" active.
+            var postsRadio = form.querySelector('input[name="show_on_front"][value="posts"]');
+            if (postsRadio) {
+                postsRadio.disabled = isDisabled;
+                var lbl2 = postsRadio.closest('label');
+                if (lbl2) lbl2.style.opacity = isDisabled ? '0.4' : '';
+            }
         }
 
         setNativeFields(toggle.checked);

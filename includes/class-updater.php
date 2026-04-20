@@ -22,15 +22,15 @@ defined('ABSPATH') || exit;
  */
 class HN_Toolkit_Updater {
 
-    private string $plugin_file;
-    private string $plugin_slug;
-    private string $version;
-    private string $github_repo;
+    private $plugin_file;
+    private $plugin_slug;
+    private $version;
+    private $github_repo;
 
     /** Transient key used to cache the GitHub API response for 12 hours. */
-    private const TRANSIENT_KEY = 'hn_toolkit_github_release';
+    const TRANSIENT_KEY = 'hn_toolkit_github_release';
 
-    public function __construct(string $plugin_file, string $version, string $github_repo) {
+    public function __construct( string $plugin_file, string $version, string $github_repo ) {
         $this->plugin_file = $plugin_file;
         $this->plugin_slug = plugin_basename($plugin_file);
         $this->version     = $version;
@@ -41,7 +41,7 @@ class HN_Toolkit_Updater {
      * Register WordPress hooks.
      * Call once during plugin init (admin only is fine).
      */
-    public function init(): void {
+    public function init() {
         add_filter('pre_set_site_transient_update_plugins', [$this, 'inject_update']);
         add_filter('plugins_api', [$this, 'plugin_info'], 20, 3);
         add_action('upgrader_process_complete', [$this, 'flush_cache'], 10, 2);
@@ -53,7 +53,7 @@ class HN_Toolkit_Updater {
      * @param  object $transient WordPress update_plugins transient.
      * @return object
      */
-    public function inject_update(object $transient): object {
+    public function inject_update( $transient ) {
         if (empty($transient->checked)) {
             return $transient;
         }
@@ -69,16 +69,16 @@ class HN_Toolkit_Updater {
             $zip_url = $this->get_zip_url($release);
             if ($zip_url) {
                 $transient->response[$this->plugin_slug] = (object) [
-                    'id'          => "github.com/{$this->github_repo}",
-                    'slug'        => dirname($this->plugin_slug),
-                    'plugin'      => $this->plugin_slug,
-                    'new_version' => $remote_version,
-                    'url'         => "https://github.com/{$this->github_repo}",
-                    'package'     => $zip_url,
-                    'icons'       => [],
-                    'banners'     => [],
-                    'tested'      => '',
-                    'requires_php'=> '8.0',
+                    'id'           => "github.com/{$this->github_repo}",
+                    'slug'         => dirname($this->plugin_slug),
+                    'plugin'       => $this->plugin_slug,
+                    'new_version'  => $remote_version,
+                    'url'          => "https://github.com/{$this->github_repo}",
+                    'package'      => $zip_url,
+                    'icons'        => [],
+                    'banners'      => [],
+                    'tested'       => '',
+                    'requires_php' => '7.3',
                     'compatibility'=> new stdClass(),
                 ];
             }
@@ -99,8 +99,8 @@ class HN_Toolkit_Updater {
     /**
      * Provide plugin info when WordPress queries the plugins API.
      */
-    public function plugin_info(mixed $result, string $action, object $args): mixed {
-        if ($action !== 'plugin_information' || ($args->slug ?? '') !== dirname($this->plugin_slug)) {
+    public function plugin_info( $result, $action, $args ) {
+        if ($action !== 'plugin_information' || (isset($args->slug) ? $args->slug : '') !== dirname($this->plugin_slug)) {
             return $result;
         }
 
@@ -117,7 +117,7 @@ class HN_Toolkit_Updater {
             'homepage'      => "https://github.com/{$this->github_repo}",
             'download_link' => $this->get_zip_url($release),
             'sections'      => [
-                'description' => $release->body ?? '',
+                'description' => isset($release->body) ? $release->body : '',
             ],
         ];
     }
@@ -125,10 +125,10 @@ class HN_Toolkit_Updater {
     /**
      * Flush the cached release info after the plugin is updated.
      */
-    public function flush_cache(mixed $upgrader, array $options): void {
+    public function flush_cache( $upgrader, $options ) {
         if (
-            ($options['action'] ?? '') === 'update' &&
-            ($options['type'] ?? '')   === 'plugin'
+            (isset($options['action']) ? $options['action'] : '') === 'update' &&
+            (isset($options['type']) ? $options['type'] : '')     === 'plugin'
         ) {
             delete_transient(self::TRANSIENT_KEY);
         }
@@ -138,8 +138,10 @@ class HN_Toolkit_Updater {
 
     /**
      * Fetch (or return cached) latest GitHub release object.
+     *
+     * @return object|null
      */
-    private function get_latest_release(): ?object {
+    private function get_latest_release() {
         $cached = get_transient(self::TRANSIENT_KEY);
         if ($cached !== false) {
             return $cached ?: null;
@@ -155,7 +157,6 @@ class HN_Toolkit_Updater {
         ]);
 
         if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
-            // Cache failure for 30 min to avoid hammering the API.
             set_transient(self::TRANSIENT_KEY, false, 30 * MINUTE_IN_SECONDS);
             return null;
         }
@@ -168,13 +169,15 @@ class HN_Toolkit_Updater {
     /**
      * Return the browser_download_url of the first ZIP asset, or the
      * GitHub-generated zipball URL as fallback.
+     *
+     * @return string
      */
-    private function get_zip_url(object $release): string {
-        foreach ($release->assets ?? [] as $asset) {
-            if (str_ends_with($asset->name, '.zip')) {
+    private function get_zip_url( $release ) {
+        foreach (isset($release->assets) ? $release->assets : [] as $asset) {
+            if (substr($asset->name, -4) === '.zip') {
                 return $asset->browser_download_url;
             }
         }
-        return $release->zipball_url ?? '';
+        return isset($release->zipball_url) ? $release->zipball_url : '';
     }
 }

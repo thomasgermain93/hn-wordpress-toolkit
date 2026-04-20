@@ -854,12 +854,20 @@ add_action('wp_ajax_hn_bulk_regen', function () {
         }
 
         $ext       = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
-        $real_type = match ($ext) {
-            'png'         => 'image/png',
-            'jpg', 'jpeg' => 'image/jpeg',
-            'gif'         => 'image/gif',
-            default       => '',
-        };
+        switch ($ext) {
+            case 'png':
+                $real_type = 'image/png';
+                break;
+            case 'jpg':
+            case 'jpeg':
+                $real_type = 'image/jpeg';
+                break;
+            case 'gif':
+                $real_type = 'image/gif';
+                break;
+            default:
+                $real_type = '';
+        }
 
         if (! $real_type) {
             $processed++;

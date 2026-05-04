@@ -3,7 +3,7 @@
  * Plugin Name:  Hungry Nuggets WordPress Toolkit
  * Plugin URI:   https://github.com/thomasgermain93/hn-wordpress-toolkit
  * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), comments/posts/author pages/media pages disablers, config import/export. GitHub-based auto-update.
- * Version:      1.2.2
+ * Version:      1.3.0
  * Requires PHP: 7.3
  * Author:       Hungry Nuggets
  * Author URI:   https://hungrynuggets.com
@@ -22,7 +22,9 @@
  *    WordPress generates thumbnails.
  *  - PNG files with transparency are converted via GD (imagecreatefrompng +
  *    imagewebp) to preserve the alpha channel. All other formats use
- *    wp_get_image_editor() for JPEG/GIF → WebP, or Imagick for AVIF.
+ *    wp_get_image_editor() for JPEG/GIF → WebP. AVIF conversion prefers GD
+ *    (imageavif, available on PHP 8.1+ when compiled with libavif), and falls
+ *    back to Imagick when GD AVIF support is not present.
  *  - The original file is deleted after a successful conversion; only the
  *    converted file is stored on disk.
  *  - MIME type detection is done via file extension, not $upload['type'], to
@@ -95,7 +97,7 @@
 
 defined('ABSPATH') || exit;
 
-define('HN_TOOLKIT_VERSION', '1.2.2');
+define('HN_TOOLKIT_VERSION', '1.3.0');
 define('HN_TOOLKIT_FILE',    __FILE__);
 
 require_once __DIR__ . '/includes/class-updater.php';
@@ -159,16 +161,16 @@ add_action('admin_init', function () {
 
     add_settings_field('hn_img_format', 'Format de conversion', function () {
         $val     = hn_img_format();
-        $avif_ok = class_exists('Imagick') && in_array('AVIF', Imagick::queryFormats(), true);
+        $avif_ok = hn_avif_supported();
         ?>
         <select name="hn_img_format" id="hn_img_format">
             <option value="webp" <?php selected($val, 'webp'); ?>>WebP</option>
             <option value="avif" <?php selected($val, 'avif'); ?> <?php disabled(! $avif_ok); ?>>
-                AVIF<?php echo $avif_ok ? '' : ' (Imagick libavif non disponible)'; ?>
+                AVIF<?php echo $avif_ok ? '' : ' (libavif non disponible)'; ?>
             </option>
         </select>
         <p class="description">
-            WebP fonctionne via GD (toujours disponible). AVIF nécessite Imagick compilé avec libavif.
+            WebP fonctionne via GD (toujours disponible). AVIF nécessite GD ou Imagick compilé avec libavif.
             <?php if (! $avif_ok): ?>
                 <br><strong>Ce serveur ne supporte pas AVIF.</strong>
             <?php endif; ?>
@@ -293,21 +295,8 @@ add_filter('wp_handle_upload', function (array $upload): array {
             $converted = hn_img_via_editor($file_path, $new_path, $mime, $quality, $maxsize);
         }
 
-    } elseif ($format === 'avif' && class_exists('Imagick')) {
-        try {
-            $img = new Imagick($file_path);
-            if ($img->getImageWidth() > $maxsize || $img->getImageHeight() > $maxsize) {
-                $img->resizeImage($maxsize, $maxsize, Imagick::FILTER_LANCZOS, 1, true);
-            }
-            $img->setImageFormat('avif');
-            $img->setImageCompressionQuality($quality);
-            $img->stripImage();
-            $img->writeImage($new_path);
-            $img->destroy();
-            $converted = file_exists($new_path);
-        } catch (Exception $e) {
-            // Imagick AVIF not available — leave original intact.
-        }
+    } elseif ($format === 'avif' && hn_avif_supported()) {
+        $converted = hn_convert_to_avif($file_path, $new_path, $real_type, $quality, $maxsize);
     }
 
     if ($converted && file_exists($new_path) && filesize($new_path) > 0) {
@@ -364,6 +353,85 @@ function hn_img_resize_gd(\GdImage $src, int $maxsize): \GdImage {
     imagedestroy($src);
 
     return $dst;
+}
+
+/**
+ * Whether AVIF encoding is available, via GD or Imagick.
+ */
+function hn_avif_supported(): bool {
+    if (function_exists('imageavif')) {
+        $gd = function_exists('gd_info') ? gd_info() : [];
+        if (! empty($gd['AVIF Support'])) {
+            return true;
+        }
+    }
+    if (class_exists('Imagick') && in_array('AVIF', Imagick::queryFormats(), true)) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Convert an image to AVIF. Tries GD first (lighter, faster on most setups);
+ * falls back to Imagick when GD AVIF support is missing.
+ *
+ * @param  string $source     Absolute path to source file.
+ * @param  string $dest       Absolute path for output file.
+ * @param  string $real_type  Source MIME type (image/jpeg, image/png, image/gif).
+ * @param  int    $quality    Compression quality (1–100).
+ * @param  int    $maxsize    Max width/height in pixels.
+ * @return bool               True if conversion produced a non-empty file.
+ */
+function hn_convert_to_avif(string $source, string $dest, string $real_type, int $quality, int $maxsize): bool {
+
+    // ── GD path ─────────────────────────────────────────────────────────
+    if (function_exists('imageavif')) {
+        $gd = function_exists('gd_info') ? gd_info() : [];
+        if (! empty($gd['AVIF Support'])) {
+            $src = null;
+            switch ($real_type) {
+                case 'image/jpeg': $src = @imagecreatefromjpeg($source); break;
+                case 'image/png':  $src = @imagecreatefrompng($source);  break;
+                case 'image/gif':  $src = @imagecreatefromgif($source);  break;
+            }
+            if ($src) {
+                if (! imageistruecolor($src)) {
+                    imagepalettetotruecolor($src);
+                }
+                $src = hn_img_resize_gd($src, $maxsize);
+                imagealphablending($src, false);
+                imagesavealpha($src, true);
+                $ok = @imageavif($src, $dest, $quality);
+                imagedestroy($src);
+                if ($ok && file_exists($dest) && filesize($dest) > 0) {
+                    return true;
+                }
+                if (file_exists($dest)) {
+                    @unlink($dest);
+                }
+            }
+        }
+    }
+
+    // ── Imagick fallback ────────────────────────────────────────────────
+    if (class_exists('Imagick') && in_array('AVIF', Imagick::queryFormats(), true)) {
+        try {
+            $img = new Imagick($source);
+            if ($img->getImageWidth() > $maxsize || $img->getImageHeight() > $maxsize) {
+                $img->resizeImage($maxsize, $maxsize, Imagick::FILTER_LANCZOS, 1, true);
+            }
+            $img->setImageFormat('avif');
+            $img->setImageCompressionQuality($quality);
+            $img->stripImage();
+            $img->writeImage($dest);
+            $img->destroy();
+            return file_exists($dest) && filesize($dest) > 0;
+        } catch (Exception $e) {
+            return false;
+        }
+    }
+
+    return false;
 }
 
 /**
@@ -902,24 +970,13 @@ add_action('wp_ajax_hn_bulk_regen', function () {
             } else {
                 $converted = hn_img_via_editor($file_path, $new_path, $mime, $quality, $maxsize);
             }
-        } elseif ($format === 'avif' && class_exists('Imagick')) {
-            try {
-                $img = new Imagick($file_path);
-                if ($img->getImageWidth() > $maxsize || $img->getImageHeight() > $maxsize) {
-                    $img->resizeImage($maxsize, $maxsize, Imagick::FILTER_LANCZOS, 1, true);
-                }
-                $img->setImageFormat('avif');
-                $img->setImageCompressionQuality($quality);
-                $img->stripImage();
-                $img->writeImage($new_path);
-                $img->destroy();
-                $converted = file_exists($new_path);
-            } catch (Exception $e) {
-                $errors[] = sprintf('ID %d : %s', $id, $e->getMessage());
+        } elseif ($format === 'avif' && hn_avif_supported()) {
+            $converted = hn_convert_to_avif($file_path, $new_path, $real_type, $quality, $maxsize);
+            if (! $converted) {
+                $errors[] = "ID $id : conversion AVIF échouée.";
             }
         } else {
-            // Format AVIF demandé mais Imagick non disponible.
-            $errors[] = "ID $id : AVIF impossible (Imagick/libavif non disponible).";
+            $errors[] = "ID $id : AVIF impossible (libavif non disponible).";
         }
 
         if ($converted && file_exists($new_path) && filesize($new_path) > 0) {

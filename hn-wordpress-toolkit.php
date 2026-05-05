@@ -3,7 +3,7 @@
  * Plugin Name:  Hungry Nuggets WordPress Toolkit
  * Plugin URI:   https://github.com/thomasgermain93/hn-wordpress-toolkit
  * Description:  Hungry Nuggets internal WordPress toolkit. Modules: image optimization (WebP/AVIF), comments/posts/author pages/media pages disablers, config import/export. GitHub-based auto-update.
- * Version:      1.3.0
+ * Version:      1.3.1
  * Requires PHP: 7.3
  * Author:       Hungry Nuggets
  * Author URI:   https://hungrynuggets.com
@@ -97,7 +97,7 @@
 
 defined('ABSPATH') || exit;
 
-define('HN_TOOLKIT_VERSION', '1.3.0');
+define('HN_TOOLKIT_VERSION', '1.3.1');
 define('HN_TOOLKIT_FILE',    __FILE__);
 
 require_once __DIR__ . '/includes/class-updater.php';
@@ -1184,7 +1184,9 @@ add_action('admin_footer-options-reading.php', function () {
         // Fields to grey: only those directly related to the blog/posts feature.
         // show_on_front="page" and page_on_front (static homepage) stay fully active.
         // page_for_posts and show_on_front="posts" are greyed individually (not the whole row).
-        var purePostsFields = ['posts_per_page', 'posts_per_rss', 'rss_use_excerpt'];
+        // NB: posts_per_page is NOT in this list — it controls every archive
+        // (custom post types, taxonomies, search, ...), not just the blog.
+        var purePostsFields = ['posts_per_rss', 'rss_use_excerpt'];
 
         function setNativeFields(isDisabled) {
             if (!form) return;

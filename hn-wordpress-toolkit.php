@@ -3,7 +3,7 @@
  * Plugin Name:  Hungry Nuggets WordPress Toolkit
  * Plugin URI:   https://github.com/thomasgermain93/hn-wordpress-toolkit
  * Description:  Boîte à outils WordPress de Hungry Nuggets, en modules activables depuis Réglages > HN Toolkit : conversion WebP/AVIF, désactivation des commentaires / articles / pages d'auteurs / pages de médias, ordre manuel par glisser-déposer, import/export de la configuration. Mise à jour automatique via GitHub.
- * Version:      1.3.1
+ * Version:      1.4.0
  * Requires PHP: 7.3
  * Author:       Hungry Nuggets
  * Author URI:   https://hungrynuggets.com
@@ -40,7 +40,7 @@
 
 defined('ABSPATH') || exit;
 
-define('HN_TOOLKIT_VERSION', '1.3.1');
+define('HN_TOOLKIT_VERSION', '1.4.0');
 define('HN_TOOLKIT_FILE',    __FILE__);
 
 require_once __DIR__ . '/includes/class-updater.php';

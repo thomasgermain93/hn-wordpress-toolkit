@@ -45,6 +45,42 @@ class HN_Toolkit_Updater {
         add_filter('pre_set_site_transient_update_plugins', [$this, 'inject_update']);
         add_filter('plugins_api', [$this, 'plugin_info'], 20, 3);
         add_action('upgrader_process_complete', [$this, 'flush_cache'], 10, 2);
+        add_filter('upgrader_source_selection', [$this, 'fix_source_dir'], 10, 4);
+    }
+
+    /**
+     * Keep the installed folder name when an update is extracted.
+     *
+     * The release ZIP contains `hn-wordpress-toolkit/`, but a site may have the
+     * plugin in another folder (e.g. `hn-wordpress-toolkit-1.3.1/`). WordPress
+     * installs the update under the folder name found in the ZIP, so without
+     * this filter the new version would land next to the active one instead of
+     * replacing it. We rename the extracted folder to match the installed one.
+     *
+     * @param  string|WP_Error $source        Extracted folder (with trailing slash).
+     * @param  string          $remote_source Temporary parent folder.
+     * @param  WP_Upgrader     $upgrader
+     * @param  array           $hook_extra
+     * @return string|WP_Error
+     */
+    public function fix_source_dir( $source, $remote_source, $upgrader, $hook_extra = [] ) {
+        global $wp_filesystem;
+
+        if (is_wp_error($source) || ! isset($hook_extra['plugin']) || $hook_extra['plugin'] !== $this->plugin_slug) {
+            return $source;
+        }
+
+        $wanted = dirname($this->plugin_slug);
+        if ($wanted === '.' || untrailingslashit(basename($source)) === $wanted || ! $wp_filesystem) {
+            return $source;
+        }
+
+        $new_source = trailingslashit($remote_source) . $wanted . '/';
+        if (! $wp_filesystem->move(untrailingslashit($source), untrailingslashit($new_source), true)) {
+            return new WP_Error('hn_toolkit_rename_failed', 'Impossible de renommer le dossier de la mise à jour HN Toolkit.');
+        }
+
+        return $new_source;
     }
 
     /**

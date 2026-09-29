@@ -1,19 +1,63 @@
 # Hungry Nuggets WordPress Toolkit
 
-A lightweight WordPress plugin that converts images to **WebP** (or AVIF) on upload, with configurable quality, max size, and format — all from **Settings > Media**.
+Hungry Nuggets' internal WordPress toolkit: a set of modules that can be switched on and off from **Settings > HN Toolkit**.
 
 Built and maintained by [Hungry Nuggets](https://hungrynuggets.com) for internal and client WordPress sites.
 
 ---
 
-## Features
+## Modules
+
+The **Settings > HN Toolkit** page opens on a dashboard: one card per module (icon, name, description, *Réglages* link, on/off switch). The switch posts a form and reloads the page, so tabs and menus that depend on the active modules are refreshed. **An inactive module loads no code.**
+
+| Module | Option (bool) | Default | Settings |
+|--------|---------------|---------|----------|
+| Conversion WebP / AVIF | `hn_module_image_optimizer` | on | Settings > Media |
+| Désactiver les commentaires | `hn_disable_comments` | off | — |
+| Désactiver les articles (blog) | `hn_disable_posts` | off | — |
+| Désactiver les pages d'auteurs | `hn_disable_author_pages` | off | — |
+| Désactiver les pages de médias | `hn_disable_media_pages` | off | — |
+| Ordre manuel | `hn_module_ordre_manuel` | off | HN Toolkit > Ordre manuel |
+| Import / export de la configuration | `hn_module_config` | on | HN Toolkit > Import / export |
+
+Modules that existed before 1.4.0 keep their original option and default, so updating from 1.3.x changes nothing on a site.
+
+### Conversion WebP / AVIF
 
 - **Format conversion** — JPEG, PNG, GIF → WebP or AVIF on upload. The original file is replaced.
 - **Alpha channel preservation** — PNG with transparency is converted via GD to preserve the alpha channel correctly.
 - **Configurable via admin** — Format, quality (%), and max dimension (px) are set in Settings > Media.
 - **MIME type bug workaround** — Correctly detects image type via file extension, bypassing a WP 6.9.x bug that misdetects JPEG as `image/avif`.
-- **Thumbnail only** — Only the `thumbnail` intermediate size (150×150 crop) is generated. Medium, medium-large, and large sub-sizes are suppressed.
-- **Auto-update** — The plugin checks GitHub Releases every 12 hours and appears in the standard WordPress update flow.
+- **Thumbnail only** — Only the `thumbnail` intermediate size (150×150 crop) is generated.
+- **Bulk regenerate** — Converts the existing library from Settings > Media.
+
+### Ordre manuel
+
+For each post type ticked in *HN Toolkit > Ordre manuel* (public, non-hierarchical types):
+
+- the admin list is sorted by `menu_order` then date, with an « Ordre » column and a drag handle;
+- rows are reordered by drag and drop (`jquery-ui-sortable`); each drop renumbers the **whole** list 1..N (saved in AJAX: nonce + `edit_post` capability on every ID);
+- drag and drop is only enabled on the full list (no search, filter, status or column sort), shown on a single page;
+- optional per type, off by default: *Appliquer l'ordre au site* sorts public queries of that type that have no explicit `orderby`.
+
+Hooks for site code:
+
+```php
+// After a new order is saved (IDs in their new order, position 1 first).
+add_action('hn_toolkit_ordre_enregistre', function (array $ids, string $post_type) { /* sync a custom field… */ }, 10, 2);
+
+// Sort used in the admin list and on the site. The secondary key orders items
+// that have no number yet: make it match the current order of the site.
+add_filter('hn_toolkit_ordre_tri', function (array $orderby, string $post_type) {
+    return ['menu_order' => 'ASC', 'date' => 'DESC'];
+}, 10, 2);
+```
+
+After saving, the plugin runs `clean_post_cache()` on each post and `do_action('litespeed_purge_all')`.
+
+### Import / export
+
+Exports every option above (module states included) to a JSON file and imports it on another site, through the same sanitize callbacks.
 
 ---
 
@@ -49,9 +93,9 @@ wp plugin install https://github.com/thomasgermain93/hn-wordpress-toolkit/releas
 
 ---
 
-## Configuration
+## Image settings
 
-Go to **Settings > Media**. The plugin adds an **"Optimisation des images"** section with three fields:
+Go to **Settings > Media**. The image module adds an **"Optimisation des images"** section with three fields:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -69,12 +113,14 @@ When a new version is available:
 - It appears in **Dashboard > Updates** like any plugin.
 - It can be updated via WP-CLI: `wp plugin update hn-wordpress-toolkit --allow-root`
 
+The release ZIP contains a `hn-wordpress-toolkit/` folder. Since 1.4.0 the updater renames the extracted folder to the installed one (`upgrader_source_selection`), so a site that has the plugin in another folder (e.g. `hn-wordpress-toolkit-1.3.1/`) is updated in place. Sites still on 1.3.x need their folder renamed to `hn-wordpress-toolkit` once (then re-activate the plugin), because the update is driven by the installed version's code.
+
 ---
 
 ## Deploying a new version
 
 ```bash
-# Bump version in hn-wordpress-toolkit.php (HN_IMG_OPT_VERSION + Plugin header)
+# Bump version in hn-wordpress-toolkit.php (Plugin header + HN_TOOLKIT_VERSION)
 git commit -am "chore: bump version to 1.x.x"
 git tag v1.x.x
 git push origin main --tags
@@ -86,7 +132,17 @@ GitHub Actions will automatically build and attach the ZIP to the release.
 
 ## Technical reference (for AI assistants)
 
-### WordPress options
+### Files
+
+| File | Role |
+|------|------|
+| `hn-wordpress-toolkit.php` | Header, constants, loads the active modules |
+| `includes/modules.php` | Module registry `hn_toolkit_modules()`, `hn_module_active()`, config option list |
+| `includes/admin-dashboard.php` | Settings > HN Toolkit page (dashboard + module tabs, filter `hn_toolkit_tabs`) |
+| `includes/class-updater.php` | GitHub Releases updater |
+| `includes/modules/*.php` | One file per module |
+
+### Image options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -130,12 +186,13 @@ wp_handle_upload (priority 5)
 
 ### Update mechanism
 
-`HN_Image_Optimizer_Updater` (in `includes/class-updater.php`):
+`HN_Toolkit_Updater` (in `includes/class-updater.php`):
 - Hooks into `pre_set_site_transient_update_plugins`
 - Calls `https://api.github.com/repos/thomasgermain93/hn-wordpress-toolkit/releases/latest`
-- Caches response in `hn_img_opt_github_release` transient for 12 hours (30 min on error)
+- Caches response in `hn_toolkit_github_release` transient for 12 hours (30 min on error)
 - Injects update into WordPress transient if `tag_name` version > installed version
 - ZIP URL: first `.zip` asset in the release, fallback to `zipball_url`
+- `upgrader_source_selection` renames the extracted folder to the installed folder
 
 ---
 

@@ -1,0 +1,8 @@
+/* HN Toolkit — module « Ordre manuel » (listes d'admin). */
+.wp-list-table .column-hn_ordre { width: 4.5em; white-space: nowrap; }
+.hn-ordre-poignee { cursor: move; color: #8c8f94; vertical-align: middle; margin-right: 2px; }
+.hn-ordre-poignee:hover { color: #2271b1; }
+.hn-ordre-num { color: #50575e; vertical-align: middle; }
+#the-list .hn-ordre-place td { height: 100%; background: #f0f6fc; border: 1px dashed #2271b1; }
+#the-list.hn-ordre-enregistre { opacity: .6; pointer-events: none; }
+#the-list tr.ui-sortable-helper { background: #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, .15); display: table; }

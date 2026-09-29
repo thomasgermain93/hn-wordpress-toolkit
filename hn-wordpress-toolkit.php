@@ -2,7 +2,7 @@
 /**
  * Plugin Name:  Hungry Nuggets WordPress Toolkit
  * Plugin URI:   https://github.com/thomasgermain93/hn-wordpress-toolkit
- * Description:  Boîte à outils WordPress de Hungry Nuggets, en modules activables depuis Réglages > HN Toolkit : conversion WebP/AVIF, désactivation des commentaires / articles / pages d'auteurs / pages de médias, import/export de la configuration. Mise à jour automatique via GitHub.
+ * Description:  Boîte à outils WordPress de Hungry Nuggets, en modules activables depuis Réglages > HN Toolkit : conversion WebP/AVIF, désactivation des commentaires / articles / pages d'auteurs / pages de médias, ordre manuel par glisser-déposer, import/export de la configuration. Mise à jour automatique via GitHub.
  * Version:      1.3.1
  * Requires PHP: 7.3
  * Author:       Hungry Nuggets
@@ -29,10 +29,12 @@
  *  - posts            hn_disable_posts           default false
  *  - author_pages     hn_disable_author_pages    default false
  *  - media_pages      hn_disable_media_pages     default false
+ *  - ordre_manuel     hn_module_ordre_manuel     default false
  *  - config           hn_module_config           default true
  *
  * Other options: hn_img_format, hn_img_quality, hn_img_maxsize (image
- * optimizer). All of them are included in the config export.
+ * optimizer), hn_ordre_manuel (ordre manuel). All of them are included in the
+ * config export.
  * -----------------------------------------------------------------------------
  */
 

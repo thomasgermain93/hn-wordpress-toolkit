@@ -73,6 +73,15 @@ function hn_toolkit_modules(): array {
             'file'        => 'media-pages.php',
             'settings'    => '',
         ],
+        'ordre_manuel' => [
+            'name'        => 'Ordre manuel',
+            'description' => 'Réordonner les contenus par glisser-déposer dans les listes d\'admin, et appliquer cet ordre au site si besoin.',
+            'icon'        => 'dashicons-move',
+            'option'      => 'hn_module_ordre_manuel',
+            'default'     => false,
+            'file'        => 'ordre-manuel.php',
+            'settings'    => hn_toolkit_page_url('ordre'),
+        ],
         'config' => [
             'name'        => 'Import / export de la configuration',
             'description' => 'Exporte les réglages du Toolkit dans un fichier JSON et les importe sur un autre site.',
@@ -124,6 +133,27 @@ function hn_media_pages_disabled(): bool  { return hn_module_active('media_pages
 // ─── Configuration (import / export) ──────────────────────────────────────
 
 /**
+ * Sanitize the « Ordre manuel » settings.
+ *
+ * Shape: ['types' => string[], 'front' => string[]] — `front` is a subset of
+ * `types` (the order is applied to the site only for sortable types).
+ *
+ * @param  mixed $v
+ * @return array{types: string[], front: string[]}
+ */
+function hn_ordre_manuel_sanitize($v): array {
+    $v     = is_array($v) ? $v : [];
+    $clean = function ($list) {
+        return array_values(array_unique(array_filter(array_map('sanitize_key', is_array($list) ? $list : []))));
+    };
+    $types = $clean($v['types'] ?? []);
+    return [
+        'types' => $types,
+        'front' => array_values(array_intersect($clean($v['front'] ?? []), $types)),
+    ];
+}
+
+/**
  * Sanitize callbacks for all recognised options, with their default values.
  * Used by the import/export module.
  *
@@ -135,6 +165,7 @@ function hn_config_options(): array {
         'hn_img_format'   => ['webp', function ($v) { return in_array($v, ['webp', 'avif'], true) ? $v : 'webp'; }],
         'hn_img_quality'  => [90,     function ($v) { return max(1, min(100, (int) $v)); }],
         'hn_img_maxsize'  => [2000,   function ($v) { return max(100, (int) $v); }],
+        'hn_ordre_manuel' => [[],     'hn_ordre_manuel_sanitize'],
     ];
     foreach (hn_toolkit_modules() as $module) {
         $options[$module['option']] = [$module['default'], $bool];

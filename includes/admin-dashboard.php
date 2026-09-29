@@ -7,8 +7,8 @@
  *   $tabs['slug'] = ['label' => 'Libellé', 'render' => callable];
  *
  * L'interrupteur d'un module est un bouton de formulaire envoyé à
- * admin-post.php (fonctionne sans JavaScript) ; avec JavaScript, le même
- * formulaire est envoyé en AJAX et la carte est mise à jour sur place.
+ * admin-post.php, puis la page est rechargée : les onglets et menus qui
+ * dépendent des modules actifs sont ainsi à jour.
  *
  * @package HN_Toolkit
  */
@@ -25,13 +25,6 @@ add_action('admin_enqueue_scripts', function ($hook) {
     }
     $url = plugin_dir_url(HN_TOOLKIT_FILE) . 'assets/';
     wp_enqueue_style('hn-toolkit-dashboard', $url . 'dashboard.css', [], HN_TOOLKIT_VERSION);
-    wp_enqueue_script('hn-toolkit-dashboard', $url . 'dashboard.js', [], HN_TOOLKIT_VERSION, true);
-    wp_localize_script('hn-toolkit-dashboard', 'hnToolkit', [
-        'ajax'   => admin_url('admin-ajax.php'),
-        'actif'  => 'Actif',
-        'inactif'=> 'Inactif',
-        'erreur' => 'Le changement n\'a pas pu être enregistré. Rechargez la page et réessayez.',
-    ]);
 });
 
 /**
@@ -150,16 +143,8 @@ function hn_toolkit_handle_toggle() {
     return ['slug' => $slug, 'active' => $active];
 }
 
-// With JavaScript.
-add_action('wp_ajax_hn_toolkit_module', function () {
-    $result = hn_toolkit_handle_toggle();
-    if (is_wp_error($result)) {
-        wp_send_json_error($result->get_error_message(), 403);
-    }
-    wp_send_json_success($result);
-});
-
-// Without JavaScript: classic form post, then back to the dashboard.
+// Classic form post, then back to the dashboard: the full reload refreshes the tabs and
+// menus that depend on the active modules (an AJAX toggle left them stale).
 add_action('admin_post_hn_toolkit_module', function () {
     $result = hn_toolkit_handle_toggle();
     if (is_wp_error($result)) {
@@ -173,6 +158,6 @@ add_action('admin_post_hn_toolkit_module', function () {
         'success'
     );
     set_transient('settings_errors', get_settings_errors('hn_toolkit_config'), 30);
-    wp_safe_redirect(hn_toolkit_page_url());
+    wp_safe_redirect(hn_toolkit_page_url() . '#hn-module-' . $result['slug']);
     exit;
 });

@@ -8,7 +8,7 @@ Built and maintained by [Hungry Nuggets](https://hungrynuggets.com) for internal
 
 ## Modules
 
-The **Settings > HN Toolkit** page opens on a dashboard: one card per module (icon, name, description, *Réglages* link, on/off switch). The switch is saved in AJAX and still works without JavaScript. **An inactive module loads no code.**
+The **Settings > HN Toolkit** page opens on a dashboard: one card per module (icon, name, description, *Réglages* link, on/off switch). The switch posts a form and reloads the page, so tabs and menus that depend on the active modules are refreshed. **An inactive module loads no code.**
 
 | Module | Option (bool) | Default | Settings |
 |--------|---------------|---------|----------|

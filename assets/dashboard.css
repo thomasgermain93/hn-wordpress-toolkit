@@ -55,4 +55,3 @@
 .hn-switch[aria-checked="true"] .hn-switch-label { color: #2271b1; font-weight: 600; }
 .hn-switch:focus { outline: none; }
 .hn-switch:focus-visible .hn-switch-track { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #2271b1; }
-.hn-switch[aria-busy="true"] { opacity: .6; cursor: progress; }
